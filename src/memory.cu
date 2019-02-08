@@ -35,6 +35,7 @@ map *allocate_maps(int num_variables) {
   map *m = (map *)malloc(num_variables * sizeof(map));
   for (int i = 0; i < num_variables; i++) {
     m[i].name = NULL;
+    m[i].out_name = NULL;
     m[i].variable = NULL;
     m[i].mass_variable = NULL;
     m[i].longi = NULL;

@@ -47,6 +47,8 @@ typedef enum variables_code {
     XLONG,     // Longitute
     XLONG_U,   // x-wind longitude
     XLONG_V,   // y-wind longitude
+    SST,       // Sea surface temperature
+    OLR,       // TOA outgoing long wave
 
     //-----------------------------------
     // 3D variables
@@ -77,7 +79,7 @@ typedef enum variables_code {
     W          // z-wind component
 } variables_code;
 
-int num_variables = 30;
+int num_variables = 32;
 // ------------------------------------------------------
 
 // ------------------------------------------------------
@@ -85,6 +87,12 @@ int num_variables = 30;
 // ------------------------------------------------------
 tensor *xlat      = NULL;
 tensor *xlong     = NULL;
+tensor *xlat_u    = NULL;
+tensor *xlong_u   = NULL;
+tensor *xlat_v    = NULL;
+tensor *xlong_v   = NULL;
+tensor *sst       = NULL;
+tensor *olr       = NULL;
 tensor *cldfra    = NULL;
 tensor *p         = NULL;
 tensor *pb        = NULL;
@@ -107,11 +115,7 @@ tensor *sh2o      = NULL;
 tensor *smcrel    = NULL;
 tensor *smois     = NULL;
 tensor *tslb      = NULL;
-tensor *xlat_u    = NULL;
-tensor *xlong_u   = NULL;
 tensor *u         = NULL;
-tensor *xlat_v    = NULL;
-tensor *xlong_v   = NULL;
 tensor *v         = NULL;
 // ------------------------------------------------------
 
@@ -175,6 +179,20 @@ void set_maps(map *maps) {
         maps[i].variable = xlong_v;
         maps[i].longi = xlong_v;
         maps[i].lat = xlat_v;
+        break;
+      case SST:
+        maps[i].name = "SST";
+        maps[i].out_name = "SST";
+        maps[i].variable = sst;
+        maps[i].longi = xlong;
+        maps[i].lat = xlat;
+        break;
+      case OLR:
+        maps[i].name = "OLR";
+        maps[i].out_name = "OLR";
+        maps[i].variable = olr;
+        maps[i].longi = xlong;
+        maps[i].lat = xlat;
         break;
       case CLDFRA:
         maps[i].name = "CLDFRA";
@@ -354,6 +372,23 @@ void set_maps(map *maps) {
   }
 }
 
+int check_maps(map *maps) {
+  int status = 0;
+  for (int i = 0; i < num_variables; i++) {
+    if (strcmp(maps[i].name, "XLAT")    == 0 || strcmp(maps[i].name, "XLAT_U")  == 0 ||
+        strcmp(maps[i].name, "XLAT_V")  == 0 || strcmp(maps[i].name, "XLONG")   == 0 ||
+        strcmp(maps[i].name, "XLONG_U") == 0 || strcmp(maps[i].name, "XLONG_V") == 0)
+           continue;
+
+    if (maps[i].name == NULL || maps[i].out_name == NULL || maps[i].variable == NULL ||
+        maps[i].longi == NULL || maps[i].lat == NULL) {
+      fprintf(stderr, "NULL pointer in mapping for variable %s.\n", maps[i].name);
+      status = -1;
+    }
+  }
+  return status;
+}
+
 void get_files_from_dir(const char *directory, char files[][MAX_STRING_LENGTH], uint * num_files) {
 
   DIR *d;
@@ -421,14 +456,23 @@ void set_path(char dir[], char *run, const char *out_name) {
 
 void write_to_file(FILE *file, map *maps, int idx, int z) {
 
+  uint nx = 0;
+  uint ny = 0;
+  if (maps[idx].variable->rank > 3) {
+    ny = maps[idx].variable->shape[2];
+    nx = maps[idx].variable->shape[3];
+  } else {
+    ny = maps[idx].variable->shape[1];
+    nx = maps[idx].variable->shape[2];
+  }
+
   fprintf(file, "longitude,latitude,%s\n", maps[idx].out_name);
 
-  for (int y = 0; y < maps[idx].variable->shape[2]; y++) {
-    for (int x = 0; x < maps[idx].variable->shape[3]; x++) {
-        float longi = maps[idx].longi->val[(y*maps[idx].longi->shape[2])+x];
-        float lat   = maps[idx].lat->val[(y*maps[idx].lat->shape[2])+x];
-        float val   = maps[idx].variable->val[(z*(maps[idx].variable->shape[2]*maps[idx].variable->shape[3]))
-                      +((y*maps[idx].variable->shape[3])+x)];
+  for (int y = 0; y < ny; y++) {
+    for (int x = 0; x < nx; x++) {
+        float longi = maps[idx].longi->val[(y*nx)+x];
+        float lat   = maps[idx].lat->val[(y*nx)+x];
+        float val   = maps[idx].variable->val[(z*(ny*nx))+((y*nx)+x)];
         fprintf(file, "%f,%f,%f\n", longi, lat, val);
       }
     }
@@ -604,8 +648,13 @@ int write_visual(map *maps, int idx, char *run, bool no_interpol_out) {
   fprintf(stdout, "----Write visual for variable: %s at loc: %s\n", maps[idx].name, dir);
 #endif
 
+  uint num_layers = 0;
+  if (maps[idx].variable->rank > 3) {
+    num_layers = maps[idx].variable->shape[1];
+  } else num_layers = 1;
+
   double i_start = cpu_second();
-  for (int z = 0; z < maps[idx].variable->shape[1]; z++) {
+  for (int z = 0; z < num_layers; z++) {
 
     char str[4];
     convert_to_string(str, z);
@@ -712,7 +761,7 @@ int write_visual(map *maps, int idx, char *run, bool no_interpol_out) {
     }
   } // End z loop
   double i_elaps = cpu_second() - i_start;
-  fprintf(stdout, ">>>>>>>>>>>> elapsed (%d layers): %f sec.\n",  maps[idx].variable->shape[1], i_elaps);
+  fprintf(stdout, ">>>>>>>>>>>> elapsed (%d layers): %f sec.\n",  num_layers, i_elaps);
 
 #ifndef __NVCC__
   if (buffer != NULL) deallocate_2d(buffer, buffer_size);
@@ -768,6 +817,10 @@ int process(char files[][MAX_STRING_LENGTH], uint num_files, bool no_interpol_ou
     xlat_v  = allocate_tensor(shape, rank);
     xlong_v = allocate_tensor(shape, rank);
 
+    shape[0] = NT; shape[1] = NY; shape[2] = NX;
+    sst = allocate_tensor(shape, rank);
+    olr = allocate_tensor(shape, rank);
+
     shape[0] = NT; shape[1] = NZ; shape[2] = NY; shape[3] = NX;
     rank = 4;
     cldfra    = allocate_tensor(shape, rank);
@@ -804,6 +857,10 @@ int process(char files[][MAX_STRING_LENGTH], uint num_files, bool no_interpol_ou
     v       = allocate_tensor(shape, rank);
 
     set_maps(maps);
+    if (check_maps(maps) != 0) {
+      exit(EXIT_FAILURE);
+    }
+
 
     // Load the variables into memory
     for (int i = 0; i < num_variables; i++) {
@@ -949,6 +1006,12 @@ int process(char files[][MAX_STRING_LENGTH], uint num_files, bool no_interpol_ou
 
     deallocate_tensor(xlat);
     deallocate_tensor(xlong);
+    deallocate_tensor(xlat_u);
+    deallocate_tensor(xlong_u);
+    deallocate_tensor(xlat_v);
+    deallocate_tensor(xlong_v);
+    deallocate_tensor(sst);
+    deallocate_tensor(olr);
     deallocate_tensor(cldfra);
     deallocate_tensor(p);
     deallocate_tensor(pb);

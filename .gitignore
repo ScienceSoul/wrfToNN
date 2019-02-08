@@ -1,2 +1,9 @@
 README.md~
 .gitignore~
+
+src/gpu.o
+src/interpolate.o
+src/main.o
+src/memory.o
+src/wrfToNN
+
