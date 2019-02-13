@@ -420,8 +420,14 @@ int load_variable(int ncid, const char *var_name, tensor * t) {
 
 void set_visual_path(char *str) {
 
-  strcpy(str,WORKDIR);
+  strncpy(str, WORKDIR, MAX_STRING_LENGTH);
   strncat(str, "/VISUAL", strlen("/VISUAL"));
+}
+
+void set_nn_path(char *str) {
+
+  strncpy(str, WORKDIR, MAX_STRING_LENGTH);
+  strncat(str, "/NN", strlen("/NN"));
 }
 
 bool is_directory(char *dir) {
@@ -457,7 +463,7 @@ void set_path(char dir[], char *run, const char *out_name) {
   strncat(dir, out_name, strlen(out_name));
 }
 
-void write_to_file(FILE *file, map *maps, int idx, int z) {
+void write_visual_to_file(FILE *file, map *maps, int idx, int z) {
 
   uint nx = 0;
   uint ny = 0;
@@ -562,15 +568,15 @@ void get_neighbors_values(velo_grid *h_velo_u_grid, velo_grid *h_velo_v_grid, ma
 }
 
 #ifdef __NVCC__
-void interpolate_wind_velo(map *maps, int idx, int z, char *file, char *file_bis, dim3 block, dim3 grid, int grid_type) {
+void interpolate_wind_velo(map *maps, int idx, int z, char file[][MAX_STRING_LENGTH], dim3 block, dim3 grid, int grid_type) {
 #else
-void interpolate_wind_velo(map *maps, int idx, int z, char *file, float **buffer, int grid_type) {
+void interpolate_wind_velo(map *maps, int idx, int z, char file[][MAX_STRING_LENGTH], float **buffer, int grid_type) {
 #endif
 
-    FILE *f = fopen(file, "w");
+    FILE *f = fopen(file[0], "w");
     fprintf(f, "longitude,latitude,%s\n", maps[idx].out_name);
 #ifdef __NVCC__
-    FILE *f_bis = fopen(file_bis, "w");
+    FILE *f_bis = fopen(file[1], "w");
     fprintf(f_bis, "longitude,latitude,%s\n", maps[V].out_name);
 #endif
 
@@ -702,7 +708,7 @@ void interpolate_wind_velo(map *maps, int idx, int z, char *file, float **buffer
 }
 #endif
 
-int write_visual(map *maps, int idx, char *run, bool no_interpol_out, int grid_type) {
+int write_data(map *maps, int idx, char *run, bool no_interpol_out, int grid_type) {
 
   static bool first_time = true;
 
@@ -720,10 +726,6 @@ int write_visual(map *maps, int idx, char *run, bool no_interpol_out, int grid_t
   if (strcmp(maps[idx].name, "V") == 0) return 0;
 #endif
 
-#ifdef __NVCC__
-  if (strcmp(maps[idx].name, "U") != 0) return 0;
-#endif
-
 #ifndef __NVCC__
   if (strcmp(maps[idx].name, "U") == 0 || strcmp(maps[idx].name, "V") == 0) {
     if (grid_type == UNSTRUCTURED) {
@@ -734,52 +736,81 @@ int write_visual(map *maps, int idx, char *run, bool no_interpol_out, int grid_t
   }
 #endif
 
-  char dir[MAX_STRING_LENGTH];
-  set_visual_path(dir);
+  char dir_visual[2][MAX_STRING_LENGTH];
+  memset(dir_visual[0], 0, sizeof(dir_visual[0]));
+  memset(dir_visual[1], 0, sizeof(dir_visual[1]));
+  set_visual_path(dir_visual[0]);
 
-  if (create_directory(dir) != 0) {
-    fprintf(stderr, "Can't create directory: %s\n", dir);
+  char dir_nn[2][MAX_STRING_LENGTH];
+  memset(dir_nn[0], 0, sizeof(dir_nn[0]));
+  memset(dir_nn[1], 0, sizeof(dir_nn[1]));
+  set_nn_path(dir_nn[0]);
+
+  if (create_directory(dir_visual[0]) != 0) {
+    fprintf(stderr, "Can't create directory: %s\n", dir_visual[0]);
+    return -1;
+  }
+  if (create_directory(dir_nn[0]) != 0) {
+    fprintf(stderr, "Can't create directory: %s\n", dir_nn[0]);
     return -1;
   }
 
-  strncat(dir, "/", strlen("/"));
-  strncat(dir, run, strlen(run));
-  if (create_directory(dir) != 0) {
-    fprintf(stderr, "Can't create directory: %s\n", dir);
+  strncat(dir_visual[0], "/", strlen("/"));
+  strncat(dir_visual[0], run, strlen(run));
+  if (create_directory(dir_visual[0]) != 0) {
+    fprintf(stderr, "Can't create directory: %s\n", dir_visual[0]);
+    return -1;
+  }
+  strncat(dir_nn[0], "/", strlen("/"));
+  strncat(dir_nn[0], run, strlen(run));
+  if (create_directory(dir_nn[0]) != 0) {
+    fprintf(stderr, "Can't create directory: %s\n", dir_nn[0]);
     return -1;
   }
 
-  strncat(dir, "/", strlen("/"));
-  strncat(dir, maps[idx].out_name, strlen(maps[idx].out_name));
-  if (create_directory(dir) != 0) {
-    fprintf(stderr, "Can't create directory: %s\n", dir);
+  strncat(dir_visual[0], "/", strlen("/"));
+  strncat(dir_visual[0], maps[idx].out_name, strlen(maps[idx].out_name));
+  if (create_directory(dir_visual[0]) != 0) {
+    fprintf(stderr, "Can't create directory: %s\n", dir_visual[0]);
     return -1;
+  }
+  strncat(dir_nn[0], "/", strlen("/"));
+  strncat(dir_nn[0], maps[idx].out_name, strlen(maps[idx].out_name));
+  if (create_directory(dir_nn[0]) != 0) {
+    fprintf(stderr, "Can't create directory: %s\n", dir_nn[0]);
   }
 
 #ifdef __NVCC__
   // For the GPU implementation, we process u and v at the same time
-  char dir_bis[MAX_STRING_LENGTH];
   if (strcmp(maps[idx].name, "U") == 0) {
-      memset(dir_bis, 0, sizeof(dir_bis));
-      set_visual_path(dir_bis);
-      set_path(dir_bis, run, maps[V].out_name);
-      if (create_directory(dir_bis) != 0) {
-        fprintf(stderr, "Can't create directory: %s\n", dir_bis);
+      set_visual_path(dir_visual[1]);
+      set_path(dir_visual[1], run, maps[V].out_name);
+      if (create_directory(dir_visual[1]) != 0) {
+        fprintf(stderr, "Can't create directory: %s\n", dir_visual[1]);
         return -1;
+      }
+
+      set_nn_path(dir_nn[1]);
+      set_path(dir_nn[1], run, maps[V].out_name);
+      if (create_directory(dir_nn[1]) != 0) {
+        fprintf(stderr, "Can't create directory: %s\n", dir_nn[1]);
       }
     }
 #endif
 
 #ifdef __NVCC__
   if (strcmp(maps[idx].name, "U") == 0) {
-    fprintf(stdout, "----Write visual for variables: %s and %s at loc: %s ", maps[idx].name,
-          maps[V].name, dir);
-    fprintf(stdout, "and at loc: %s\n", dir_bis);
+    fprintf(stdout, "----Write visual for variables: %s and %s at locs: %s %s\n", maps[idx].name,
+          maps[V].name, dir_visual[0], dir_visual[1]);
+    fprintf(stdout, "----Write NN inputs for variables: %s and %s at locs: %s %s\n", maps[idx].name,
+          maps[V].name, dir_nn[0], dir_nn[1]);
   } else {
-    fprintf(stdout, "----Write visual for variable: %s at loc: %s\n", maps[idx].name, dir);
+    fprintf(stdout, "----Write visual for variable: %s at loc: %s\n", maps[idx].name, dir_visual[0]);
+    fprintf(stdout, "----Write NN input for variable: %s at loc: %s\n", maps[idx].name, dir_nn[0]);
   }
 #else
-  fprintf(stdout, "----Write visual for variable: %s at loc: %s\n", maps[idx].name, dir);
+  fprintf(stdout, "----Write visual for variable: %s at loc: %s\n", maps[idx].name, dir_visual[0]);
+  fprintf(stdout, "----Write NN input for variable: %s at loc: %s\n", maps[idx].name, dir_nn[0]);
 #endif
 
   uint num_layers = 0;
@@ -793,20 +824,30 @@ int write_visual(map *maps, int idx, char *run, bool no_interpol_out, int grid_t
     char str[4];
     convert_to_string(str, z);
 
-    char file[MAX_STRING_LENGTH];
-    char interpol_file[MAX_STRING_LENGTH];
-    memset(file, 0, sizeof(file));
-    strcpy(file, dir);
-    strncat(file, "/", strlen("/"));
-    strncat(file, str, strlen(str));
+    char file[2][MAX_STRING_LENGTH];
+    char interpol_file[2][MAX_STRING_LENGTH];
+    memset(file[0], 0, sizeof(file[0]));
+    strncpy(file[0], dir_visual[0], MAX_STRING_LENGTH);
+    strncat(file[0], "/", strlen("/"));
+    strncat(file[0], str, strlen(str));
+
+    char file_nn[2][MAX_STRING_LENGTH];
+    memset(file_nn[0], 0, sizeof(file_nn[0]));
+    strncpy(file_nn[0], dir_nn[0], MAX_STRING_LENGTH);
+    strncat(file_nn[0], "/", strlen("/"));
+    strncat(file_nn[0], str, strlen(str));
+
 #ifdef __NVCC__
-    char file_bis[MAX_STRING_LENGTH];
-    char interpol_file_bis[MAX_STRING_LENGTH];
     if (strcmp(maps[idx].name, "U") == 0) {
-      memset(file_bis, 0, sizeof(file_bis));
-      strcpy(file_bis, dir_bis);
-      strncat(file_bis, "/", strlen("/"));
-      strncat(file_bis, str, strlen(str));
+      memset(file[1], 0, sizeof(file[1]));
+      strcpy(file[1], dir_visual[1]);
+      strncat(file[1], "/", strlen("/"));
+      strncat(file[1], str, strlen(str));
+
+      memset(file_nn[1], 0, sizeof(file_nn[1]));
+      strncpy(file_nn[1], dir_nn[1], MAX_STRING_LENGTH);
+      strncat(file_nn[1], "/", strlen("/"));
+      strncat(file_nn[1], str, strlen(str));
     }
 #endif
 
@@ -815,49 +856,53 @@ int write_visual(map *maps, int idx, char *run, bool no_interpol_out, int grid_t
 #else
     if (strcmp(maps[idx].name, "U") == 0 || strcmp(maps[idx].name, "V") == 0) {
 #endif
-        strcpy(interpol_file, file);
-        strncat(interpol_file, "_interpol", strlen("_interpol"));
-        strncat(interpol_file, ".csv", strlen(".csv"));
+        strncpy(interpol_file[0], file[0], MAX_STRING_LENGTH);
+        strncat(interpol_file[0], "_interpol", strlen("_interpol"));
+        strncat(interpol_file[0], ".csv", strlen(".csv"));
 #ifdef __NVCC__
-        strcpy(interpol_file_bis, file_bis);
-        strncat(interpol_file_bis, "_interpol", strlen("_interpol"));
-        strncat(interpol_file_bis, ".csv", strlen(".csv"));
+        strncpy(interpol_file[1], file[1], MAX_STRING_LENGTH);
+        strncat(interpol_file[1], "_interpol", strlen("_interpol"));
+        strncat(interpol_file[1], ".csv", strlen(".csv"));
 #endif
     }
-    strncat(file, ".csv", strlen(".csv"));
+    strncat(file[0], ".csv", strlen(".csv"));
+    strncat(file_nn[0], ".csv", strlen(".csv"));
 #ifdef __NVCC__
     if(strcmp(maps[idx].name, "U") == 0) {
-      strncat(file_bis, ".csv", strlen(".csv"));
+      strncat(file[1], ".csv", strlen(".csv"));
+      strncat(file_nn[1], ".csv", strlen(".csv"));
     }
 #endif
 
-    FILE *f;
+    FILE *f, *f_nn;
     if (strcmp(maps[idx].name, "U") == 0 || strcmp(maps[idx].name, "V") == 0) {
       if (no_interpol_out) {
-        f = fopen(file, "w");
+        f = fopen(file[0], "w");
       }
     } else {
-      f = fopen(file, "w");
+      f = fopen(file[0], "w");
     }
+    f_nn = fopen(file_nn[0], "w");
 
 #ifdef __NVCC__
-    FILE *f_bis;
+    FILE *f_bis, *f_nn_bis;
     if(strcmp(maps[idx].name, "U") == 0) {
-      if (no_interpol_out) f_bis = fopen(file_bis, "w");
+      if (no_interpol_out) f_bis = fopen(file[1], "w");
     }
+    f_nn_bis = fopen(file_nn[1], "w");
 #endif
 
     if (strcmp(maps[idx].name, "U") == 0 || strcmp(maps[idx].name, "V") == 0) {
       if (no_interpol_out) {
-        write_to_file(f, maps, idx, z);
+        write_visual_to_file(f, maps, idx, z);
       }
     } else {
-      write_to_file(f, maps, idx, z);
+      write_visual_to_file(f, maps, idx, z);
     }
 
 #ifdef __NVCC__
     if (strcmp(maps[idx].name, "U") == 0) {
-      if (no_interpol_out) write_to_file(f_bis, maps, V, z);
+      if (no_interpol_out) write_visual_to_file(f_bis, maps, V, z);
     }
 #endif
 
@@ -868,13 +913,15 @@ int write_visual(map *maps, int idx, char *run, bool no_interpol_out, int grid_t
     } else {
       fclose(f);
     }
+    fclose(f_nn);
 #ifdef __NVCC__
     if(strcmp(maps[idx].name, "U") == 0) {
       if(no_interpol_out) fclose(f_bis);
     }
+    fclose(f_nn_bis);
 #endif
 
-    // Interpolate the horizontal wind components at the mass points
+    // Interpolate the horizontal wind components   char dir_bis[MAX_STRING_LENGTH];at the mass points
 #ifdef __NVCC__
     if (strcmp(maps[idx].name, "U") == 0) {
 #else
@@ -894,7 +941,7 @@ int write_visual(map *maps, int idx, char *run, bool no_interpol_out, int grid_t
 #endif
 
 #ifdef __NVCC__
-      interpolate_wind_velo(maps, idx, z, interpol_file, interpol_file_bis, block, grid, grid_type);
+      interpolate_wind_velo(maps, idx, z, interpol_file, block, grid, grid_type);
 #else
       interpolate_wind_velo(maps, idx, z, interpol_file, buffer, grid_type);
 #endif
@@ -1199,7 +1246,7 @@ int process(char files[][MAX_STRING_LENGTH], uint num_files, bool no_interpol_ou
 
     double i_start = cpu_second();
     for (int i = 0; i < num_variables; i++) {
-      if (write_visual(maps, i, run, no_interpol_out, grid_type) != 0) return -1;
+      if (write_data(maps, i, run, no_interpol_out, grid_type) != 0) return -1;
     }
     double i_elaps = cpu_second() - i_start;
     fprintf(stdout, ">>>>>>>>>>>> elapsed (%d variables): %f sec.\n",  num_variables, i_elaps);
