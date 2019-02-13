@@ -18,6 +18,9 @@
 // The date of the files we are processing
 #define DATE "2018"
 
+// The number of supporting points for the interpolation
+#define NUM_SUPPORTING_POINTS 4
+
 // ----------------------------------
 // The global dimensions
 // ----------------------------------
@@ -478,10 +481,90 @@ void write_to_file(FILE *file, map *maps, int idx, int z) {
     }
 }
 
+void get_neighbors_coordinates(velo_grid *h_velo_u_grid, velo_grid *h_velo_v_grid, map *maps,
+      uint NY_STAG, uint NX_STAG, uint NY, uint NX, uint num_support_points) {
+
+  // Get the coordinates of the neighbors of each point in the grid NY x NX
+  // The neighbors are taken from the U and V grids
+  // Store the points clockwise. Only for four supporting points!
+  for (int i = 0; i < num_support_points; i++) {
+    int idx = 0;
+    for (int j = 0; j < NY; j++) {
+      for(int k = 0; k < NX; k++) {
+        switch (i) {
+          case 0: // Lower left point
+          h_velo_u_grid->x[((NY*NX)*i)+idx] = maps[U].longi->val[(NX_STAG*j)+k];
+          h_velo_u_grid->y[((NY*NX)*i)+idx] = maps[U].lat->val[(NX_STAG*j)+k];
+
+          h_velo_v_grid->x[((NY*NX)*i)+idx] = maps[V].longi->val[(NX*j)+k];
+          h_velo_v_grid->y[((NY*NX)*i)+idx] = maps[V].lat->val[(NX*j)+k];
+          break;
+          case 1: // Upper left point
+          h_velo_u_grid->x[((NY*NX)*i)+idx] = maps[U].longi->val[(NX_STAG*(j+i))+k];
+          h_velo_u_grid->y[((NY*NX)*i)+idx] = maps[U].lat->val[(NX_STAG*(j+i))+k];
+
+          h_velo_v_grid->x[((NY*NX)*i)+idx] = maps[V].longi->val[(NX*(j+i))+k];
+          h_velo_v_grid->y[((NY*NX)*i)+idx] = maps[V].lat->val[(NX*(j+i))+k];
+          break;
+          case 2: // Upper right point
+          h_velo_u_grid->x[((NY*NX)*i)+idx] = maps[U].longi->val[(NX_STAG*(j+i))+k+1];
+          h_velo_u_grid->y[((NY*NX)*i)+idx] = maps[U].lat->val[(NX_STAG*(j+i))+k+1];
+
+          h_velo_v_grid->x[((NY*NX)*i)+idx] = maps[V].longi->val[(NX*(j+i))+k+1];
+          h_velo_v_grid->y[((NY*NX)*i)+idx] = maps[V].lat->val[(NX*(j+i))+k+1];
+          break;
+          case 3: // Lower right point
+          h_velo_u_grid->x[((NY*NX)*i)+idx] = maps[U].longi->val[(NX_STAG*j)+k+1];
+          h_velo_u_grid->y[((NY*NX)*i)+idx] = maps[U].lat->val[(NX_STAG*j)+k+1];
+
+          h_velo_v_grid->x[((NY*NX)*i)+idx] = maps[V].longi->val[(NX*j)+k+1];
+          h_velo_v_grid->y[((NY*NX)*i)+idx] = maps[V].lat->val[(NX*j)+k+1];
+          break;
+        }
+        idx++;
+      }
+    }
+  }
+}
+
+void get_neighbors_values(velo_grid *h_velo_u_grid, velo_grid *h_velo_v_grid, map *maps,
+      uint NY_STAG, uint NX_STAG, uint NY, uint NX, int z, uint num_support_points) {
+
+  // Get the values of the neighbors of each point in the grid NY x NX
+  // The neighbors are taken from the U and V grids
+  // Store the points clockwise. Only for four supporting points!
+  for (int i = 0; i < num_support_points; i++) {
+    int idx = 0;
+    for (int j = 0; j < NY; j++) {
+      for(int k = 0; k < NX; k++) {
+        switch (i) {
+          case 0: // Lower left point
+          h_velo_u_grid->val[((NY*NX)*i)+idx] = maps[U].variable->val[(z*NY*NX_STAG)+(NX_STAG*j)+k];
+          h_velo_v_grid->val[((NY*NX)*i)+idx] = maps[V].variable->val[(z*NY_STAG*NX)+(NX*j)+k];
+          break;
+          case 1: // Upper left point
+          h_velo_u_grid->val[((NY*NX)*i)+idx] = maps[U].variable->val[(z*NY*NX_STAG)+(NX_STAG*(j+i))+k];
+          h_velo_v_grid->val[((NY*NX)*i)+idx] = maps[V].variable->val[(z*NY_STAG*NX)+(NX*(j+i))+k];
+          break;
+          case 2: // Upper right point
+          h_velo_u_grid->val[((NY*NX)*i)+idx] = maps[U].variable->val[(z*NY*NX_STAG)+(NX_STAG*(j+i))+k+1];
+          h_velo_v_grid->val[((NY*NX)*i)+idx] = maps[V].variable->val[(z*NY_STAG*NX)+(NX*(j+i))+k+1];
+          break;
+          case 3: // Lower right point
+          h_velo_u_grid->val[((NY*NX)*i)+idx] = maps[U].variable->val[(z*NY*NX_STAG)+(NX_STAG*j)+k+1];
+          h_velo_v_grid->val[((NY*NX)*i)+idx] = maps[V].variable->val[(z*NY_STAG*NX)+(NX*j)+k+1];
+          break;
+        }
+        idx++;
+      }
+    }
+  }
+}
+
 #ifdef __NVCC__
-void interpolate_wind_velo(map *maps, int idx, int z, char *file, char *file_bis, dim3 block, dim3 grid) {
+void interpolate_wind_velo(map *maps, int idx, int z, char *file, char *file_bis, dim3 block, dim3 grid, int grid_type) {
 #else
-void interpolate_wind_velo(map *maps, int idx, int z, char *file, float **buffer) {
+void interpolate_wind_velo(map *maps, int idx, int z, char *file, float **buffer, int grid_type) {
 #endif
 
     FILE *f = fopen(file, "w");
@@ -498,11 +581,37 @@ void interpolate_wind_velo(map *maps, int idx, int z, char *file, float **buffer
     fprintf(stdout, "( ------ Interpolate %s at layer %d\n", maps[idx].name, z);
 #endif
 
+    if (grid_type == STRUCTURED) {
+      // Get the neighbors values of the mass points
+      double nv = cpu_second();
+      get_neighbors_values(h_velo_u_grid, h_velo_v_grid, maps, NY_STAG, NX_STAG, NY, NX, z,
+        NUM_SUPPORTING_POINTS);
+        fprintf(stdout, "Time to get neighbors values: %f.\n", cpu_second() - nv);
+  }
+
 #ifdef __NVCC__
 
+    if (grid_type == STRUCTURED) {
+      {
+        float *v[1];
+        cudaMemcpy(&(v[0]), &(d_velo_u_grid[0].val), sizeof(float *), cudaMemcpyDeviceToHost);
+        cudaMemcpy(v[0], h_velo_u_grid->val, (NY*NX*NUM_SUPPORTING_POINTS)*sizeof(float), cudaMemcpyHostToDevice);
+      }
+      {
+        float *vv[1];
+        cudaMemcpy(&(vv[0]), &(d_velo_v_grid[0].val), sizeof(float *), cudaMemcpyDeviceToHost);
+        cudaMemcpy(vv[0], h_velo_v_grid->val, (NY*NX*NUM_SUPPORTING_POINTS)*sizeof(float), cudaMemcpyHostToDevice);
+      }
+  }
+
     double i_start = cpu_second();
-    radially_interpolate_gpu <<< grid, block >>>(d_velo_u_grid, d_velo_v_grid, d_mass_grid,
-                             NY_STAG, NX_STAG, NY, NX, z, 2, 4, 2.0);
+    if (grid_type == STRUCTURED) {
+        gpu_radially_interpolate_structured<<<grid, block>>>(d_velo_u_grid, d_velo_v_grid, d_mass_grid,
+                                    NY, NX, NUM_SUPPORTING_POINTS, 2.0f);
+    } else {
+        gpu_radially_interpolate_unstructured <<< grid, block >>>(d_velo_u_grid, d_velo_v_grid, d_mass_grid,
+                                    NY_STAG, NX_STAG, NY, NX, z, 2, 4, 2.0f);
+    }
 
     cudaDeviceSynchronize();
     double i_elaps = cpu_second() - i_start;
@@ -534,26 +643,39 @@ void interpolate_wind_velo(map *maps, int idx, int z, char *file, float **buffer
     fprintf(stdout, ">>>>>>>>>>>> elapsed (write file): %f sec.\n", i_elaps);
 
 #else
+    int num_data;
     int dim = 2;
     int directions[2] = {1,2};
     bool verbose = true;
-
     bool reinitiate;
-    if (z > 0) {
-      reinitiate = false;
-    } else {
-      reinitiate = true;
+
+    if (grid_type == UNSTRUCTURED) {
+      if (z > 0) {
+        reinitiate = false;
+      } else {
+        reinitiate = true;
+      }
+
+      num_data = maps[idx].variable->shape[2] * maps[idx].variable->shape[3];
+      int i = 0;
+      for (int y = 0; y < maps[idx].variable->shape[2]; y++) {
+        for (int x = 0; x < maps[idx].variable->shape[3]; x++) {
+          buffer[i][0] = maps[idx].longi->val[(y*maps[idx].longi->shape[2])+x];
+          buffer[i][1] = maps[idx].lat->val[(y*maps[idx].lat->shape[2])+x];
+          buffer[i][2] = maps[idx].variable->val[(z*(maps[idx].variable->shape[2]*maps[idx].variable->shape[3]))
+          +((y*maps[idx].variable->shape[3])+x)];
+          i++;
+        }
+      }
     }
 
-    int num_data = maps[idx].variable->shape[2] * maps[idx].variable->shape[3];
-    int i = 0;
-    for (int y = 0; y < maps[idx].variable->shape[2]; y++) {
-      for (int x = 0; x < maps[idx].variable->shape[3]; x++) {
-        buffer[i][0] = maps[idx].longi->val[(y*maps[idx].longi->shape[2])+x];
-        buffer[i][1] = maps[idx].lat->val[(y*maps[idx].lat->shape[2])+x];
-        buffer[i][2] = maps[idx].variable->val[(z*(maps[idx].variable->shape[2]*maps[idx].variable->shape[3]))
-                                              +((y*maps[idx].variable->shape[3])+x)];
-        i++;
+    int grid_idx = 0;
+    velo_grid *pt_to_grid = NULL;
+    if (grid_type == STRUCTURED) {
+      if(strcmp(maps[idx].name, "U") == 0) {
+        pt_to_grid = h_velo_u_grid;
+      } else {
+        pt_to_grid = h_velo_v_grid;
       }
     }
 
@@ -561,8 +683,14 @@ void interpolate_wind_velo(map *maps, int idx, int z, char *file, float **buffer
       for (int x = 0; x < maps[idx].mass_variable->shape[3]; x++) {
         float longi = maps[idx].mass_longi->val[(y*maps[idx].mass_longi->shape[2])+x];
         float lat   = maps[idx].mass_lat->val[(y*maps[idx].mass_lat->shape[2])+x];
-        float val   = radially_interpolate_cpu(buffer, &longi, &lat, NULL, num_data, dim, directions,
-                                               2.0f, reinitiate, 4, &verbose);
+        if (grid_type == STRUCTURED) {
+          float val = cpu_radially_interpolate_structured(pt_to_grid, &longi, &lat,
+                            grid_idx, NY, NX, NUM_SUPPORTING_POINTS, 2.0f);
+            grid_idx++;
+        } else {
+          float val = cpu_radially_interpolate_unstructured(buffer, &longi, &lat, NULL, num_data, dim, directions,
+                            2.0f, reinitiate, 4, &verbose);
+        }
         fprintf(f, "%f,%f,%f\n", longi, lat, val);
       }
     }
@@ -574,7 +702,7 @@ void interpolate_wind_velo(map *maps, int idx, int z, char *file, float **buffer
 }
 #endif
 
-int write_visual(map *maps, int idx, char *run, bool no_interpol_out) {
+int write_visual(map *maps, int idx, char *run, bool no_interpol_out, int grid_type) {
 
   static bool first_time = true;
 
@@ -592,11 +720,17 @@ int write_visual(map *maps, int idx, char *run, bool no_interpol_out) {
   if (strcmp(maps[idx].name, "V") == 0) return 0;
 #endif
 
+#ifdef __NVCC__
+  if (strcmp(maps[idx].name, "U") != 0) return 0;
+#endif
+
 #ifndef __NVCC__
   if (strcmp(maps[idx].name, "U") == 0 || strcmp(maps[idx].name, "V") == 0) {
-    buffer_size = maps[idx].variable->shape[2] * maps[idx].variable->shape[3];
-    buffer = allocate_2d(buffer_size, 3);
-    memset(*buffer, 0.0f, sizeof(float));
+    if (grid_type == UNSTRUCTURED) {
+      buffer_size = maps[idx].variable->shape[2] * maps[idx].variable->shape[3];
+      buffer = allocate_2d(buffer_size, 3);
+      memset(*buffer, 0.0f, sizeof(float));
+    }
   }
 #endif
 
@@ -749,14 +883,20 @@ int write_visual(map *maps, int idx, char *run, bool no_interpol_out) {
 
 #ifdef __NVCC__
     int n_points = NY * NX;
-    dim3 block (UNROLL_SIZE);
+    uint block_size;
+    if (grid_type == STRUCTURED) {
+      block_size = BLOCK_SIZE;
+    } else {
+      block_size = UNROLL_SIZE;
+    }
+    dim3 block (block_size);
     dim3 grid ((n_points + block.x-1)/block.x);
 #endif
 
 #ifdef __NVCC__
-      interpolate_wind_velo(maps, idx, z, interpol_file, interpol_file_bis, block, grid);
+      interpolate_wind_velo(maps, idx, z, interpol_file, interpol_file_bis, block, grid, grid_type);
 #else
-      interpolate_wind_velo(maps, idx, z, interpol_file, buffer);
+      interpolate_wind_velo(maps, idx, z, interpol_file, buffer, grid_type);
 #endif
     }
   } // End z loop
@@ -764,13 +904,15 @@ int write_visual(map *maps, int idx, char *run, bool no_interpol_out) {
   fprintf(stdout, ">>>>>>>>>>>> elapsed (%d layers): %f sec.\n",  num_layers, i_elaps);
 
 #ifndef __NVCC__
-  if (buffer != NULL) deallocate_2d(buffer, buffer_size);
+  if (grid_type == UNSTRUCTURED) {
+    if (buffer != NULL) deallocate_2d(buffer, buffer_size);
+  }
 #endif
 
   return 0;
 }
 
-int process(char files[][MAX_STRING_LENGTH], uint num_files, bool no_interpol_out) {
+int process(char files[][MAX_STRING_LENGTH], uint num_files, bool no_interpol_out, int grid_type) {
 
   // netcd id for the file and data variable
   int ncid;
@@ -861,24 +1003,46 @@ int process(char files[][MAX_STRING_LENGTH], uint num_files, bool no_interpol_ou
       exit(EXIT_FAILURE);
     }
 
-
     // Load the variables into memory
     for (int i = 0; i < num_variables; i++) {
       if ((retval = load_variable(ncid, maps[i].name, maps[i].variable)))
       ERR(retval);
     }
 
+    if (grid_type == STRUCTURED) {
+      // The storage for the neighbors in the x-wind and y-wind grids
+      h_velo_u_grid = (velo_grid *)malloc(sizeof(velo_grid));
+      h_velo_u_grid->x = (float *)malloc((NY*NX*NUM_SUPPORTING_POINTS)*sizeof(float));
+      h_velo_u_grid->y = (float *)malloc((NY*NX*NUM_SUPPORTING_POINTS)*sizeof(float));
+      h_velo_u_grid->val = (float *)malloc((NY*NX*NUM_SUPPORTING_POINTS)*sizeof(float));
+
+      h_velo_v_grid = (velo_grid *)malloc(sizeof(velo_grid));
+      h_velo_v_grid->x = (float *)malloc((NY*NX*NUM_SUPPORTING_POINTS)*sizeof(float));
+      h_velo_v_grid->y = (float *)malloc((NY*NX*NUM_SUPPORTING_POINTS)*sizeof(float));
+      h_velo_v_grid->val = (float *)malloc((NY*NX*NUM_SUPPORTING_POINTS)*sizeof(float));
+
+      // Get the neighbors coordinates of the mass points
+      double nc = cpu_second();
+      get_neighbors_coordinates(h_velo_u_grid, h_velo_v_grid, maps, NY_STAG, NX_STAG, NY, NX,
+        NUM_SUPPORTING_POINTS);
+        fprintf(stdout, "Time to get neighbors coordinates: %f.\n", cpu_second() - nc);
+  }
+
 #ifdef __NVCC__
 
-    // The x-wind component grid
-    h_velo_u_grid = (velo_grid *)malloc(sizeof(velo_grid));
-    h_velo_u_grid->x = (float *)malloc((NY*NX_STAG)*sizeof(float));
-    h_velo_u_grid->y = (float *)malloc((NY*NX_STAG)*sizeof(float));
-    h_velo_u_grid->val = (float *)malloc((NZ*NY*NX_STAG)*sizeof(float));
+    if (grid_type == UNSTRUCTURED) {
+      // The x-wind component grid
+      h_velo_u_grid = (velo_grid *)malloc(sizeof(velo_grid));
+      h_velo_u_grid->x = (float *)malloc((NY*NX_STAG)*sizeof(float));
+      h_velo_u_grid->y = (float *)malloc((NY*NX_STAG)*sizeof(float));
+      h_velo_u_grid->val = (float *)malloc((NZ*NY*NX_STAG)*sizeof(float));
 
-    memcpy(h_velo_u_grid->x, xlong_u->val, (NY*NX_STAG)*sizeof(float));
-    memcpy(h_velo_u_grid->y, xlat_u->val, (NY*NX_STAG)*sizeof(float));
-    memcpy(h_velo_u_grid->val, u->val, (NZ*NY*NX_STAG)*sizeof(float));
+      memcpy(h_velo_u_grid->x, xlong_u->val, (NY*NX_STAG)*sizeof(float));
+      memcpy(h_velo_u_grid->y, xlat_u->val, (NY*NX_STAG)*sizeof(float));
+      memcpy(h_velo_u_grid->val, u->val, (NZ*NY*NX_STAG)*sizeof(float));
+   } else {
+      memset(h_velo_u_grid->val, 0.0f, (NY*NX*NUM_SUPPORTING_POINTS)*sizeof(float));
+    }
 
     if(cudaMalloc((velo_grid**)&d_velo_u_grid, sizeof(velo_grid)) != cudaSuccess) {
         fprintf(stderr, "Memory allocattion failure for x-wind grid on device.\n");
@@ -891,32 +1055,54 @@ int process(char files[][MAX_STRING_LENGTH], uint num_files, bool no_interpol_ou
     }
     {
       float *x[1];
-      cudaMalloc(&(x[0]), (NY*NX_STAG)*sizeof(float));
-      cudaMemcpy(&(d_velo_u_grid[0].x), &(x[0]), sizeof(float *), cudaMemcpyHostToDevice);
-      cudaMemcpy(x[0], xlong_u->val, (NY*NX_STAG)*sizeof(float), cudaMemcpyHostToDevice);
+      if (grid_type == STRUCTURED) {
+        cudaMalloc(&(x[0]), (NY*NX*NUM_SUPPORTING_POINTS)*sizeof(float));
+        cudaMemcpy(&(d_velo_u_grid[0].x), &(x[0]), sizeof(float *), cudaMemcpyHostToDevice);
+        cudaMemcpy(x[0], h_velo_u_grid->x, (NY*NX*NUM_SUPPORTING_POINTS)*sizeof(float), cudaMemcpyHostToDevice);
+      } else {
+        cudaMalloc(&(x[0]), (NY*NX_STAG)*sizeof(float));
+        cudaMemcpy(&(d_velo_u_grid[0].x), &(x[0]), sizeof(float *), cudaMemcpyHostToDevice);
+        cudaMemcpy(x[0], xlong_u->val, (NY*NX_STAG)*sizeof(float), cudaMemcpyHostToDevice);
+      }
     }
     {
       float *y[1];
-      cudaMalloc(&(y[0]), (NY*NX_STAG)*sizeof(float));
-      cudaMemcpy(&(d_velo_u_grid[0].y), &(y[0]), sizeof(float *), cudaMemcpyHostToDevice);
-      cudaMemcpy(y[0], xlat_u->val, (NY*NX_STAG)*sizeof(float), cudaMemcpyHostToDevice);
+      if (grid_type == STRUCTURED) {
+        cudaMalloc(&(y[0]), (NY*NX*NUM_SUPPORTING_POINTS)*sizeof(float));
+        cudaMemcpy(&(d_velo_u_grid[0].y), &(y[0]), sizeof(float *), cudaMemcpyHostToDevice);
+        cudaMemcpy(y[0], h_velo_u_grid->y, (NY*NX*NUM_SUPPORTING_POINTS)*sizeof(float), cudaMemcpyHostToDevice);
+      } else {
+        cudaMalloc(&(y[0]), (NY*NX_STAG)*sizeof(float));
+        cudaMemcpy(&(d_velo_u_grid[0].y), &(y[0]), sizeof(float *), cudaMemcpyHostToDevice);
+        cudaMemcpy(y[0], xlat_u->val, (NY*NX_STAG)*sizeof(float), cudaMemcpyHostToDevice);
+      }
     }
     {
       float *v[1];
-      cudaMalloc(&(v[0]), (NZ*NY*NX_STAG)*sizeof(float));
-      cudaMemcpy(&(d_velo_u_grid[0].val), &(v[0]), sizeof(float *), cudaMemcpyHostToDevice);
-      cudaMemcpy(v[0], u->val, (NZ*NY*NX_STAG)*sizeof(float), cudaMemcpyHostToDevice);
+      if (grid_type == STRUCTURED) {
+        cudaMalloc(&(v[0]), (NY*NX*NUM_SUPPORTING_POINTS)*sizeof(float));
+        cudaMemcpy(&(d_velo_u_grid[0].val), &(v[0]), sizeof(float *), cudaMemcpyHostToDevice);
+        cudaMemset(v[0], 0.0f, (NY*NX*NUM_SUPPORTING_POINTS)*sizeof(float));
+      } else {
+        cudaMalloc(&(v[0]), (NZ*NY*NX_STAG)*sizeof(float));
+        cudaMemcpy(&(d_velo_u_grid[0].val), &(v[0]), sizeof(float *), cudaMemcpyHostToDevice);
+        cudaMemcpy(v[0], u->val, (NZ*NY*NX_STAG)*sizeof(float), cudaMemcpyHostToDevice);
+      }
     }
 
     // The y-wind component grid
-    h_velo_v_grid = (velo_grid *)malloc(sizeof(velo_grid));
-    h_velo_v_grid->x = (float *)malloc((NY_STAG*NX)*sizeof(float));
-    h_velo_v_grid->y = (float *)malloc((NY_STAG*NX)*sizeof(float));
-    h_velo_v_grid->val = (float *)malloc((NZ*NY_STAG*NX)*sizeof(float));
+    if (grid_type == UNSTRUCTURED) {
+      h_velo_v_grid = (velo_grid *)malloc(sizeof(velo_grid));
+      h_velo_v_grid->x = (float *)malloc((NY_STAG*NX)*sizeof(float));
+      h_velo_v_grid->y = (float *)malloc((NY_STAG*NX)*sizeof(float));
+      h_velo_v_grid->val = (float *)malloc((NZ*NY_STAG*NX)*sizeof(float));
 
-    memcpy(h_velo_v_grid->x, xlong_v->val,(NY_STAG*NX)*sizeof(float));
-    memcpy(h_velo_v_grid->y, xlat_v->val, (NY_STAG*NX)*sizeof(float));
-    memcpy(h_velo_v_grid->val, v->val, (NZ*NY_STAG*NX)*sizeof(float));
+      memcpy(h_velo_v_grid->x, xlong_v->val,(NY_STAG*NX)*sizeof(float));
+      memcpy(h_velo_v_grid->y, xlat_v->val, (NY_STAG*NX)*sizeof(float));
+      memcpy(h_velo_v_grid->val, v->val, (NZ*NY_STAG*NX)*sizeof(float));
+    } else {
+      memset(h_velo_v_grid->val, 0.0f, (NY*NX*NUM_SUPPORTING_POINTS)*sizeof(float));
+    }
 
     if(cudaMalloc((velo_grid**)&d_velo_v_grid, sizeof(velo_grid)) != cudaSuccess) {
         fprintf(stderr, "Memory allocation failure for y-wind grid on device.\n");
@@ -929,21 +1115,39 @@ int process(char files[][MAX_STRING_LENGTH], uint num_files, bool no_interpol_ou
     }
     {
       float *x[1];
-      cudaMalloc(&(x[0]), (NY_STAG*NX)*sizeof(float));
-      cudaMemcpy(&(d_velo_v_grid[0].x), &(x[0]), sizeof(float *), cudaMemcpyHostToDevice);
-      cudaMemcpy(x[0], xlong_v->val, (NY_STAG*NX)*sizeof(float), cudaMemcpyHostToDevice);
+      if (grid_type == STRUCTURED) {
+        cudaMalloc(&(x[0]), (NY*NX*NUM_SUPPORTING_POINTS)*sizeof(float));
+        cudaMemcpy(&(d_velo_v_grid[0].x), &(x[0]), sizeof(float *), cudaMemcpyHostToDevice);
+        cudaMemcpy(x[0], h_velo_v_grid->x, (NY*NX*NUM_SUPPORTING_POINTS)*sizeof(float), cudaMemcpyHostToDevice);
+      } else {
+        cudaMalloc(&(x[0]), (NY_STAG*NX)*sizeof(float));
+        cudaMemcpy(&(d_velo_v_grid[0].x), &(x[0]), sizeof(float *), cudaMemcpyHostToDevice);
+        cudaMemcpy(x[0], xlong_v->val, (NY_STAG*NX)*sizeof(float), cudaMemcpyHostToDevice);
+      }
     }
     {
       float *y[1];
-      cudaMalloc(&(y[0]), (NY_STAG*NX)*sizeof(float));
-      cudaMemcpy(&(d_velo_v_grid[0].y), &(y[0]), sizeof(float *), cudaMemcpyHostToDevice);
-      cudaMemcpy(y[0], xlat_v->val, (NY_STAG*NX)*sizeof(float), cudaMemcpyHostToDevice);
+      if (grid_type == STRUCTURED) {
+        cudaMalloc(&(y[0]), (NY*NX*NUM_SUPPORTING_POINTS)*sizeof(float));
+        cudaMemcpy(&(d_velo_v_grid[0].y), &(y[0]), sizeof(float *), cudaMemcpyHostToDevice);
+        cudaMemcpy(y[0], h_velo_v_grid->y, (NY*NX*NUM_SUPPORTING_POINTS)*sizeof(float), cudaMemcpyHostToDevice);
+      } else {
+        cudaMalloc(&(y[0]), (NY_STAG*NX)*sizeof(float));
+        cudaMemcpy(&(d_velo_v_grid[0].y), &(y[0]), sizeof(float *), cudaMemcpyHostToDevice);
+        cudaMemcpy(y[0], xlat_v->val, (NY_STAG*NX)*sizeof(float), cudaMemcpyHostToDevice);
+      }
     }
     {
       float *vv[1];
-      cudaMalloc(&(vv[0]), (NZ*NY_STAG*NX)*sizeof(float));
-      cudaMemcpy(&(d_velo_v_grid[0].val), &(vv[0]), sizeof(float *), cudaMemcpyHostToDevice);
-      cudaMemcpy(vv[0], v->val, (NZ*NY_STAG*NX)*sizeof(float), cudaMemcpyHostToDevice);
+      if (grid_type == STRUCTURED) {
+        cudaMalloc(&(vv[0]), (NY*NX*NUM_SUPPORTING_POINTS)*sizeof(float));
+        cudaMemcpy(&(d_velo_v_grid[0].val), &(vv[0]), sizeof(float *), cudaMemcpyHostToDevice);
+        cudaMemset(vv[0], 0.0f, (NY*NX*NUM_SUPPORTING_POINTS)*sizeof(float));
+      } else {
+        cudaMalloc(&(vv[0]), (NZ*NY_STAG*NX)*sizeof(float));
+        cudaMemcpy(&(d_velo_v_grid[0].val), &(vv[0]), sizeof(float *), cudaMemcpyHostToDevice);
+        cudaMemcpy(vv[0], v->val, (NZ*NY_STAG*NX)*sizeof(float), cudaMemcpyHostToDevice);
+      }
     }
 
     // The mass grid
@@ -995,7 +1199,7 @@ int process(char files[][MAX_STRING_LENGTH], uint num_files, bool no_interpol_ou
 
     double i_start = cpu_second();
     for (int i = 0; i < num_variables; i++) {
-      if (write_visual(maps, i, run, no_interpol_out) != 0) return -1;
+      if (write_visual(maps, i, run, no_interpol_out, grid_type) != 0) return -1;
     }
     double i_elaps = cpu_second() - i_start;
     fprintf(stdout, ">>>>>>>>>>>> elapsed (%d variables): %f sec.\n",  num_variables, i_elaps);
@@ -1037,16 +1241,30 @@ int process(char files[][MAX_STRING_LENGTH], uint num_files, bool no_interpol_ou
     deallocate_tensor(v);
     deallocate_tensor(w);
 
-#ifdef __NVCC__
-    free(h_velo_u_grid->x);
-    free(h_velo_u_grid->y);
-    free(h_velo_u_grid->val);
-    free(h_velo_u_grid);
+    if (grid_type == STRUCTURED) {
+      free(h_velo_u_grid->x);
+      free(h_velo_u_grid->y);
+      free(h_velo_u_grid->val);
+      free(h_velo_u_grid);
 
-    free(h_velo_v_grid->x);
-    free(h_velo_v_grid->y);
-    free(h_velo_v_grid->val);
-    free(h_velo_v_grid);
+      free(h_velo_v_grid->x);
+      free(h_velo_v_grid->y);
+      free(h_velo_v_grid->val);
+      free(h_velo_v_grid);
+    }
+
+#ifdef __NVCC__
+    if (grid_type == UNSTRUCTURED) {
+      free(h_velo_u_grid->x);
+      free(h_velo_u_grid->y);
+      free(h_velo_u_grid->val);
+      free(h_velo_u_grid);
+
+      free(h_velo_v_grid->x);
+      free(h_velo_v_grid->y);
+      free(h_velo_v_grid->val);
+      free(h_velo_v_grid);
+    }
 
     free(h_mass_grid->x);
     free(h_mass_grid->y);
@@ -1140,7 +1358,7 @@ int main (int argc, const char *argv[]) {
 
   double i_start = cpu_second();
   maps = allocate_maps(num_variables);
-  if (process(netcdf_files, num_netcdf_files, no_interpol_out) != 0) {
+  if (process(netcdf_files, num_netcdf_files, no_interpol_out, STRUCTURED) != 0) {
     fprintf(stderr, "Program failed.\n");
   };
   free(maps);
