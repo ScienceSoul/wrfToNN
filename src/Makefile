@@ -94,6 +94,7 @@ depend: $(SRCS)
 
 # DO NOT DELETE THIS LINE -- make depend needs it
 
+feature_scaling.o: ../include/feature_scaling.h
 gpu.o: /usr/include/stdio.h ../include/gpu.h
 interpolate.o: ../include/interpolate.h /usr/include/math.h
 interpolate.o: ../include/memory.h /usr/include/stdlib.h /usr/include/stdio.h

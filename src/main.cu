@@ -8,6 +8,7 @@
 #ifdef __NVCC__
   #include "gpu.h"
 #endif
+#include "feature_scaling.h"
 
 #define ERRCODE 2
 #define ERR(e) {printf("Error: %s\n", nc_strerror(e)); exit(ERRCODE);}
@@ -487,6 +488,32 @@ void write_visual_to_file(FILE *file, map *maps, int idx, int z) {
     }
 }
 
+void write_nn_to_file(FILE *file, map *maps, int idx, int z) {
+
+  uint nx = 0;
+  uint ny = 0;
+  if (maps[idx].variable->rank > 3) {
+    ny = maps[idx].variable->shape[2];
+    nx = maps[idx].variable->shape[3];
+  } else {
+    ny = maps[idx].variable->shape[1];
+    nx = maps[idx].variable->shape[2];
+  }
+
+  fprintf(file, "longitude,latitude,%s\n", maps[idx].out_name);
+
+  bool new_call = true;
+  for (int y = 0; y < ny; y++) {
+    for (int x = 0; x < nx; x++) {
+        float longi = maps[idx].longi->val[(y*nx)+x];
+        float lat   = maps[idx].lat->val[(y*nx)+x];
+        float val   = normalize(maps[idx].variable->val[(z*(ny*nx))+((y*nx)+x)], maps[idx].variable->val,
+                                ny*nx, &new_call);
+        fprintf(file, "%f,%f,%f\n", longi, lat, val);
+    }
+  }
+}
+
 void get_neighbors_coordinates(velo_grid *h_velo_u_grid, velo_grid *h_velo_v_grid, map *maps,
       uint NY_STAG, uint NX_STAG, uint NY, uint NX, uint num_support_points) {
 
@@ -568,16 +595,24 @@ void get_neighbors_values(velo_grid *h_velo_u_grid, velo_grid *h_velo_v_grid, ma
 }
 
 #ifdef __NVCC__
-void interpolate_wind_velo(map *maps, int idx, int z, char file[][MAX_STRING_LENGTH], dim3 block, dim3 grid, int grid_type) {
+void interpolate_wind_velo(map *maps, int idx, int z, char file[][MAX_STRING_LENGTH], char file_nn[][MAX_STRING_LENGTH],
+                          dim3 block, dim3 grid, int grid_type) {
 #else
-void interpolate_wind_velo(map *maps, int idx, int z, char file[][MAX_STRING_LENGTH], float **buffer, int grid_type) {
+void interpolate_wind_velo(map *maps, int idx, int z, char file[][MAX_STRING_LENGTH], char file_nn[][MAX_STRING_LENGTH],
+                         float **buffer, int grid_type) {
 #endif
 
     FILE *f = fopen(file[0], "w");
     fprintf(f, "longitude,latitude,%s\n", maps[idx].out_name);
+
+    FILE *f_nn = fopen(file_nn[0], "w");
+    fprintf(f_nn, "longitude,latitude,%s\n", maps[idx].out_name);
 #ifdef __NVCC__
     FILE *f_bis = fopen(file[1], "w");
     fprintf(f_bis, "longitude,latitude,%s\n", maps[V].out_name);
+
+    FILE *f_nn_bis = fopen(file_nn[1], "w");
+    fprintf(f_nn_bis, "longitude,latitude,%s\n", maps[V].out_name);
 #endif
 
 #ifdef __NVCC__
@@ -590,10 +625,9 @@ void interpolate_wind_velo(map *maps, int idx, int z, char file[][MAX_STRING_LEN
     if (grid_type == STRUCTURED) {
       // Get the neighbors values of the mass points
       double nv = cpu_second();
-      get_neighbors_values(h_velo_u_grid, h_velo_v_grid, maps, NY_STAG, NX_STAG, NY, NX, z,
-        NUM_SUPPORTING_POINTS);
-        fprintf(stdout, "Time to get neighbors values: %f.\n", cpu_second() - nv);
-  }
+      get_neighbors_values(h_velo_u_grid, h_velo_v_grid, maps, NY_STAG, NX_STAG, NY, NX, z, NUM_SUPPORTING_POINTS);
+      fprintf(stdout, "Time to get neighbors values: %f sec.\n", cpu_second() - nv);
+    }
 
 #ifdef __NVCC__
 
@@ -635,14 +669,19 @@ void interpolate_wind_velo(map *maps, int idx, int z, char file[][MAX_STRING_LEN
     fprintf(stdout, ">>>>>>>>>>>> elapsed (data copy): %f sec.\n", i_elaps);
 
     i_start = cpu_second();
+    bool new_call = true;
     for (int y = 0; y < maps[idx].mass_variable->shape[2]; y++) {
       for (int x = 0; x < maps[idx].mass_variable->shape[3]; x++) {
         float longi = maps[idx].mass_longi->val[(y*maps[idx].mass_longi->shape[2])+x];
         float lat   = maps[idx].mass_lat->val[(y*maps[idx].mass_lat->shape[2])+x];
         float u_val = h_mass_grid->u[(y*maps[idx].mass_variable->shape[3])+x];
         float v_val = h_mass_grid->v[(y*maps[idx].mass_variable->shape[3])+x];
+        float u_nn_val = normalize(u_val, h_mass_grid->u, NY*NX, &new_call);
+        float v_nn_val = normalize(v_val, h_mass_grid->v, NY*NX, &new_call);
         fprintf(f, "%f,%f,%f\n", longi, lat, u_val);
         fprintf(f_bis, "%f,%f,%f\n", longi, lat, v_val);
+        fprintf(f_nn, "%f,%f,%f\n", longi, lat, u_nn_val);
+        fprintf(f_nn_bis, "%f,%f,%f\n", longi, lat, v_nn_val);
       }
     }
     i_elaps = cpu_second() -  i_start;
@@ -685,26 +724,46 @@ void interpolate_wind_velo(map *maps, int idx, int z, char file[][MAX_STRING_LEN
       }
     }
 
-    for (int y = 0; y < maps[idx].mass_variable->shape[2]; y++) {
-      for (int x = 0; x < maps[idx].mass_variable->shape[3]; x++) {
+    uint ny = maps[idx].mass_variable->shape[2];
+    uint nx = maps[idx].mass_variable->shape[3];
+    float interpo[ny*nx];
+    uint i = 0;
+    for (int y = 0; y < ny; y++) {
+      for (int x = 0; x < nx; x++) {
         float longi = maps[idx].mass_longi->val[(y*maps[idx].mass_longi->shape[2])+x];
         float lat   = maps[idx].mass_lat->val[(y*maps[idx].mass_lat->shape[2])+x];
         if (grid_type == STRUCTURED) {
-          float val = cpu_radially_interpolate_structured(pt_to_grid, &longi, &lat,
+          interpol[i] = cpu_radially_interpolate_structured(pt_to_grid, &longi, &lat,
                             grid_idx, NY, NX, NUM_SUPPORTING_POINTS, 2.0f);
             grid_idx++;
         } else {
-          float val = cpu_radially_interpolate_unstructured(buffer, &longi, &lat, NULL, num_data, dim, directions,
+          interpol[i] = cpu_radially_interpolate_unstructured(buffer, &longi, &lat, NULL, num_data, dim, directions,
                             2.0f, reinitiate, 4, &verbose);
         }
-        fprintf(f, "%f,%f,%f\n", longi, lat, val);
+        i++;
       }
     }
+
+    bool new_call = true;
+    i = 0;
+    for (int y = 0; y < ny; y++) {
+      for (int x = 0; x < nx; x++) {
+        float longi = maps[idx].mass_longi->val[(y*maps[idx].mass_longi->shape[2])+x];
+        float lat   = maps[idx].mass_lat->val[(y*maps[idx].mass_lat->shape[2])+x];
+        float val   = normalize(interpol[i], interpol, ny*nx, &new_call);
+        fprintf(f,  "%f,%f,%f\n", longi, lat, interpol[i]);
+        fprintf(f_nn, "%f,%f,%f\n", longi, lat, val);
+        i++;
+      }
+    }
+
 #endif
 
     fclose(f);
+    fclose(f_nn);
 #ifdef __NVCC__
     fclose(f_bis);
+    fclose(f_nn_bis);
 }
 #endif
 
@@ -882,14 +941,16 @@ int write_data(map *maps, int idx, char *run, bool no_interpol_out, int grid_typ
     } else {
       f = fopen(file[0], "w");
     }
-    f_nn = fopen(file_nn[0], "w");
+
+    if (strcmp(maps[idx].name, "U") != 0 && strcmp(maps[idx].name, "V") != 0) {
+      f_nn = fopen(file_nn[0], "w");
+    }
 
 #ifdef __NVCC__
-    FILE *f_bis, *f_nn_bis;
+    FILE *f_bis;
     if(strcmp(maps[idx].name, "U") == 0) {
       if (no_interpol_out) f_bis = fopen(file[1], "w");
     }
-    f_nn_bis = fopen(file_nn[1], "w");
 #endif
 
     if (strcmp(maps[idx].name, "U") == 0 || strcmp(maps[idx].name, "V") == 0) {
@@ -906,6 +967,11 @@ int write_data(map *maps, int idx, char *run, bool no_interpol_out, int grid_typ
     }
 #endif
 
+    // Write the scaled values for NN, here only the non-interpolated variable
+    if (strcmp(maps[idx].name, "U") != 0 && strcmp(maps[idx].name, "V") != 0) {
+      write_nn_to_file(f_nn, maps, idx, z);
+    }
+
     if (strcmp(maps[idx].name, "U") == 0 || strcmp(maps[idx].name, "V") == 0) {
       if (no_interpol_out) {
         fclose(f);
@@ -913,15 +979,17 @@ int write_data(map *maps, int idx, char *run, bool no_interpol_out, int grid_typ
     } else {
       fclose(f);
     }
-    fclose(f_nn);
+
+    if (strcmp(maps[idx].name, "U") != 0 && strcmp(maps[idx].name, "V") != 0) {
+      fclose(f_nn);
+    }
 #ifdef __NVCC__
     if(strcmp(maps[idx].name, "U") == 0) {
       if(no_interpol_out) fclose(f_bis);
     }
-    fclose(f_nn_bis);
 #endif
 
-    // Interpolate the horizontal wind components   char dir_bis[MAX_STRING_LENGTH];at the mass points
+    // Interpolate the horizontal wind components at the mass points
 #ifdef __NVCC__
     if (strcmp(maps[idx].name, "U") == 0) {
 #else
@@ -941,9 +1009,9 @@ int write_data(map *maps, int idx, char *run, bool no_interpol_out, int grid_typ
 #endif
 
 #ifdef __NVCC__
-      interpolate_wind_velo(maps, idx, z, interpol_file, block, grid, grid_type);
+      interpolate_wind_velo(maps, idx, z, interpol_file, file_nn, block, grid, grid_type);
 #else
-      interpolate_wind_velo(maps, idx, z, interpol_file, buffer, grid_type);
+      interpolate_wind_velo(maps, idx, z, interpol_file, file_nn, buffer, grid_type);
 #endif
     }
   } // End z loop
@@ -1072,7 +1140,7 @@ int process(char files[][MAX_STRING_LENGTH], uint num_files, bool no_interpol_ou
       double nc = cpu_second();
       get_neighbors_coordinates(h_velo_u_grid, h_velo_v_grid, maps, NY_STAG, NX_STAG, NY, NX,
         NUM_SUPPORTING_POINTS);
-        fprintf(stdout, "Time to get neighbors coordinates: %f.\n", cpu_second() - nc);
+        fprintf(stdout, "Time to get neighbors coordinates: %f sec.\n", cpu_second() - nc);
   }
 
 #ifdef __NVCC__
@@ -1393,6 +1461,10 @@ int main (int argc, const char *argv[]) {
       no_interpol_out = true;
     }
   }
+
+#ifdef __NVCC__
+  device_info();
+#endif
 
   get_files_from_dir(WORKDIR, dir_files, &num_files);
 
