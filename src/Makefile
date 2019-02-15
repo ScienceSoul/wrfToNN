@@ -94,15 +94,16 @@ depend: $(SRCS)
 
 # DO NOT DELETE THIS LINE -- make depend needs it
 
-feature_scaling.o: ../include/feature_scaling.h
+feature_scaling.o: /usr/include/math.h ../include/feature_scaling.h
 gpu.o: /usr/include/stdio.h ../include/gpu.h
 interpolate.o: ../include/interpolate.h /usr/include/math.h
 interpolate.o: ../include/memory.h /usr/include/stdlib.h /usr/include/stdio.h
 interpolate.o: /usr/include/string.h
 main.o: /usr/include/dirent.h /usr/include/features.h
 main.o: /usr/include/stdc-predef.h /usr/include/unistd.h
-main.o: /usr/local/include/netcdf.h /usr/include/errno.h
+main.o: /usr/local/include/netcdf.h /usr/include/errno.h ../include/params.h
 main.o: ../include/interpolate.h /usr/include/math.h ../include/memory.h
 main.o: /usr/include/stdlib.h /usr/include/stdio.h /usr/include/string.h
+main.o: ../include/feature_scaling.h
 memory.o: ../include/memory.h /usr/include/stdlib.h /usr/include/stdio.h
 memory.o: /usr/include/string.h

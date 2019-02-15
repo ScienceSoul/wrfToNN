@@ -4,6 +4,7 @@
 #include <unistd.h>
 #include <netcdf.h>
 
+#include "params.h"
 #include "interpolate.h"
 #ifdef __NVCC__
   #include "gpu.h"
@@ -12,15 +13,6 @@
 
 #define ERRCODE 2
 #define ERR(e) {printf("Error: %s\n", nc_strerror(e)); exit(ERRCODE);}
-
-// The working directory
-#define WORKDIR "/home/seddik/Documents/workdir/WRF_Jebi"
-
-// The date of the files we are processing
-#define DATE "2018"
-
-// The number of supporting points for the interpolation
-#define NUM_SUPPORTING_POINTS 4
 
 // ----------------------------------
 // The global dimensions
@@ -488,7 +480,7 @@ void write_visual_to_file(FILE *file, map *maps, int idx, int z) {
     }
 }
 
-void write_nn_to_file(FILE *file, map *maps, int idx, int z) {
+void write_nn_to_file(FILE *file, map *maps, int idx, int z, feature_scaling_pt feature_scaling_func) {
 
   uint nx = 0;
   uint ny = 0;
@@ -507,8 +499,8 @@ void write_nn_to_file(FILE *file, map *maps, int idx, int z) {
     for (int x = 0; x < nx; x++) {
         float longi = maps[idx].longi->val[(y*nx)+x];
         float lat   = maps[idx].lat->val[(y*nx)+x];
-        float val   = normalize(maps[idx].variable->val[(z*(ny*nx))+((y*nx)+x)], maps[idx].variable->val,
-                                ny*nx, &new_call);
+        float val   = feature_scaling_func(maps[idx].variable->val[(z*(ny*nx))+((y*nx)+x)],
+                                           maps[idx].variable->val+(z*(ny*nx)), ny*nx, &new_call);
         fprintf(file, "%f,%f,%f\n", longi, lat, val);
     }
   }
@@ -596,10 +588,10 @@ void get_neighbors_values(velo_grid *h_velo_u_grid, velo_grid *h_velo_v_grid, ma
 
 #ifdef __NVCC__
 void interpolate_wind_velo(map *maps, int idx, int z, char file[][MAX_STRING_LENGTH], char file_nn[][MAX_STRING_LENGTH],
-                          dim3 block, dim3 grid, int grid_type) {
+                          dim3 block, dim3 grid, int grid_type, feature_scaling_pt feature_scaling_func) {
 #else
 void interpolate_wind_velo(map *maps, int idx, int z, char file[][MAX_STRING_LENGTH], char file_nn[][MAX_STRING_LENGTH],
-                         float **buffer, int grid_type) {
+                         float **buffer, int grid_type, feature_scaling_pt feature_scaling_func) {
 #endif
 
     FILE *f = fopen(file[0], "w");
@@ -676,8 +668,8 @@ void interpolate_wind_velo(map *maps, int idx, int z, char file[][MAX_STRING_LEN
         float lat   = maps[idx].mass_lat->val[(y*maps[idx].mass_lat->shape[2])+x];
         float u_val = h_mass_grid->u[(y*maps[idx].mass_variable->shape[3])+x];
         float v_val = h_mass_grid->v[(y*maps[idx].mass_variable->shape[3])+x];
-        float u_nn_val = normalize(u_val, h_mass_grid->u, NY*NX, &new_call);
-        float v_nn_val = normalize(v_val, h_mass_grid->v, NY*NX, &new_call);
+        float u_nn_val = feature_scaling_func(u_val, h_mass_grid->u, NY*NX, &new_call);
+        float v_nn_val = feature_scaling_func(v_val, h_mass_grid->v, NY*NX, &new_call);
         fprintf(f, "%f,%f,%f\n", longi, lat, u_val);
         fprintf(f_bis, "%f,%f,%f\n", longi, lat, v_val);
         fprintf(f_nn, "%f,%f,%f\n", longi, lat, u_nn_val);
@@ -750,7 +742,7 @@ void interpolate_wind_velo(map *maps, int idx, int z, char file[][MAX_STRING_LEN
       for (int x = 0; x < nx; x++) {
         float longi = maps[idx].mass_longi->val[(y*maps[idx].mass_longi->shape[2])+x];
         float lat   = maps[idx].mass_lat->val[(y*maps[idx].mass_lat->shape[2])+x];
-        float val   = normalize(interpol[i], interpol, ny*nx, &new_call);
+        float val   = feature_scaling_func(interpol[i], interpol, ny*nx, &new_call);
         fprintf(f,  "%f,%f,%f\n", longi, lat, interpol[i]);
         fprintf(f_nn, "%f,%f,%f\n", longi, lat, val);
         i++;
@@ -767,9 +759,8 @@ void interpolate_wind_velo(map *maps, int idx, int z, char file[][MAX_STRING_LEN
 }
 #endif
 
-int write_data(map *maps, int idx, char *run, bool no_interpol_out, int grid_type) {
-
-  static bool first_time = true;
+int write_data(map *maps, int idx, char *run, bool no_interpol_out, int grid_type,
+               feature_scaling_pt feature_scaling_func) {
 
 #ifndef __NVCC__
   float **buffer = NULL;
@@ -969,7 +960,7 @@ int write_data(map *maps, int idx, char *run, bool no_interpol_out, int grid_typ
 
     // Write the scaled values for NN, here only the non-interpolated variable
     if (strcmp(maps[idx].name, "U") != 0 && strcmp(maps[idx].name, "V") != 0) {
-      write_nn_to_file(f_nn, maps, idx, z);
+      write_nn_to_file(f_nn, maps, idx, z, feature_scaling_func);
     }
 
     if (strcmp(maps[idx].name, "U") == 0 || strcmp(maps[idx].name, "V") == 0) {
@@ -1009,9 +1000,9 @@ int write_data(map *maps, int idx, char *run, bool no_interpol_out, int grid_typ
 #endif
 
 #ifdef __NVCC__
-      interpolate_wind_velo(maps, idx, z, interpol_file, file_nn, block, grid, grid_type);
+      interpolate_wind_velo(maps, idx, z, interpol_file, file_nn, block, grid, grid_type, feature_scaling_func);
 #else
-      interpolate_wind_velo(maps, idx, z, interpol_file, file_nn, buffer, grid_type);
+      interpolate_wind_velo(maps, idx, z, interpol_file, file_nn, buffer, grid_type, feature_scaling_func);
 #endif
     }
   } // End z loop
@@ -1027,7 +1018,8 @@ int write_data(map *maps, int idx, char *run, bool no_interpol_out, int grid_typ
   return 0;
 }
 
-int process(char files[][MAX_STRING_LENGTH], uint num_files, bool no_interpol_out, int grid_type) {
+int process(char files[][MAX_STRING_LENGTH], uint num_files, bool no_interpol_out, int grid_type,
+            feature_scaling_pt feature_scaling_func) {
 
   // netcd id for the file and data variable
   int ncid;
@@ -1314,7 +1306,7 @@ int process(char files[][MAX_STRING_LENGTH], uint num_files, bool no_interpol_ou
 
     double i_start = cpu_second();
     for (int i = 0; i < num_variables; i++) {
-      if (write_data(maps, i, run, no_interpol_out, grid_type) != 0) return -1;
+      if (write_data(maps, i, run, no_interpol_out, grid_type, feature_scaling_func) != 0) return -1;
     }
     double i_elaps = cpu_second() - i_start;
     fprintf(stdout, ">>>>>>>>>>>> elapsed (%d variables): %f sec.\n",  num_variables, i_elaps);
@@ -1475,9 +1467,23 @@ int main (int argc, const char *argv[]) {
     }
   }
 
+  // Set the feature scaling routine
+  feature_scaling_pt feature_scaling_func = NULL;
+  switch (FEATURE_SCALING) {
+    case NORMALIZATION:
+        feature_scaling_func = normalize;
+    break;
+    case NORMALIZATION_CENTERED:
+      feature_scaling_func = normalize_centered;
+    break;
+    case STANDARDIZATION:
+      feature_scaling_func = standardize;
+    break;
+  }
+
   double i_start = cpu_second();
   maps = allocate_maps(num_variables);
-  if (process(netcdf_files, num_netcdf_files, no_interpol_out, STRUCTURED) != 0) {
+  if (process(netcdf_files, num_netcdf_files, no_interpol_out, GRID_TYPE, feature_scaling_func) != 0) {
     fprintf(stderr, "Program failed.\n");
   };
   free(maps);

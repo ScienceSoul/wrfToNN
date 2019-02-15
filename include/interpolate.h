@@ -8,14 +8,6 @@
 
 #ifdef __NVCC__
 
-#define UNROLL_SIZE 256
-#define BLOCK_SIZE 128
-
-enum {
-  STRUCTURED=1,
-  UNSTRUCTURED
-};
-
 typedef struct velo_grid {
   float *x;
   float *y;

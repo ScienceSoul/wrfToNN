@@ -1,3 +1,4 @@
+#include "params.h"
 #include "interpolate.h"
 
 float radially_interpolate_cpu(float **data,
