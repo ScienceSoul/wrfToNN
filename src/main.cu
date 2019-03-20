@@ -1,6 +1,7 @@
 #include <dirent.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/resource.h>
 #include <unistd.h>
 #include <netcdf.h>
 
@@ -35,9 +36,15 @@ uint NT = 1;
 // ------------------------------------------------------
 typedef enum variables_code {
     //-----------------------------------
+    // 1D variables
+    //-----------------------------------
+    ZNU=0,     // Eta values on half (mass) levels
+    ZNW,       // Eta values on full (w) levels
+
+    //-----------------------------------
     // 2D variables
     //-----------------------------------
-    XLAT=0,    // Latitude
+    XLAT,      // Latitude
     XLAT_U,    // x-wind latitude
     XLAT_V,    // y-wind latitude
     XLONG,     // Longitute
@@ -75,12 +82,14 @@ typedef enum variables_code {
     W          // z-wind component
 } variables_code;
 
-int num_variables = 32;
+int num_variables = 34;
 // ------------------------------------------------------
 
 // ------------------------------------------------------
 // The tensors
 // ------------------------------------------------------
+tensor *znu       = NULL;
+tensor *znw       = NULL;
 tensor *xlat      = NULL;
 tensor *xlong     = NULL;
 tensor *xlat_u    = NULL;
@@ -140,6 +149,20 @@ void set_maps(map *maps) {
   for (int i = 0; i < num_variables; i++) {
 
     switch (i) {
+      case ZNU:
+        maps[i].name = "ZNU";
+        maps[i].out_name = "ZNU";
+        maps[i].variable = znu;
+        maps[i].longi = znu; // Just for dummy
+        maps[i].lat = znu;   // Just for dummy
+        break;
+      case ZNW:
+        maps[i].name = "ZNW";
+        maps[i].out_name = "ZNW";
+        maps[i].variable = znw;
+        maps[i].longi = znw; // Just for dummy
+        maps[i].lat = znw;   // Just for dummy
+        break;
       case XLAT:
         maps[i].name = "XLAT";
         maps[i].variable = xlat;
@@ -460,6 +483,7 @@ void write_visual_to_file(FILE *file, map *maps, int idx, int z) {
 
   uint nx = 0;
   uint ny = 0;
+
   if (maps[idx].variable->rank > 3) {
     ny = maps[idx].variable->shape[2];
     nx = maps[idx].variable->shape[3];
@@ -484,6 +508,7 @@ void write_nn_to_file(FILE *file, map *maps, int idx, int z, feature_scaling_pt 
 
   uint nx = 0;
   uint ny = 0;
+
   if (maps[idx].variable->rank > 3) {
     ny = maps[idx].variable->shape[2];
     nx = maps[idx].variable->shape[3];
@@ -492,16 +517,54 @@ void write_nn_to_file(FILE *file, map *maps, int idx, int z, feature_scaling_pt 
     nx = maps[idx].variable->shape[2];
   }
 
+  if (strcmp(maps[idx].name, "ZNU") == 0 || strcmp(maps[idx].name, "ZNW") == 0) {
+    fprintf(file, "%s\n", maps[idx].out_name);
+    float val = maps[idx].variable->val[z];
+    fprintf(file, "%f\n", val);
+    return;
+  }
+
   fprintf(file, "longitude,latitude,%s\n", maps[idx].out_name);
 
+  float longi[ny*nx];
+  float lat[ny*nx];
+  float val[ny*nx];
+
   bool new_call = true;
+  int i = 0;
   for (int y = 0; y < ny; y++) {
     for (int x = 0; x < nx; x++) {
-        float longi = maps[idx].longi->val[(y*nx)+x];
-        float lat   = maps[idx].lat->val[(y*nx)+x];
-        float val   = feature_scaling_func(maps[idx].variable->val[(z*(ny*nx))+((y*nx)+x)],
-                                           maps[idx].variable->val+(z*(ny*nx)), ny*nx, &new_call);
-        fprintf(file, "%f,%f,%f\n", longi, lat, val);
+        longi[i] = feature_scaling_func(maps[idx].longi->val[(y*nx)+x],
+                                        maps[idx].longi->val, ny*nx, &new_call);
+        i++;
+    }
+  }
+
+  new_call = true;
+  i = 0;
+  for (int y = 0; y < ny; y++) {
+    for (int x = 0; x < nx; x++) {
+        lat[i] = feature_scaling_func(maps[idx].lat->val[(y*nx)+x],
+                                      maps[idx].lat->val, ny*nx, &new_call);
+        i++;
+    }
+  }
+
+  new_call = true;
+  i = 0;
+  for (int y = 0; y < ny; y++) {
+    for (int x = 0; x < nx; x++) {
+        val[i] = feature_scaling_func(maps[idx].variable->val[(z*(ny*nx))+((y*nx)+x)],
+                                      maps[idx].variable->val+(z*(ny*nx)), ny*nx, &new_call);
+        i++;
+    }
+  }
+
+  i = 0;
+  for (int y = 0; y < ny; y++) {
+    for (int x = 0; x < nx; x++) {
+        fprintf(file, "%f,%f,%f\n", longi[i], lat[i], val[i]);
+        i++;
     }
   }
 }
@@ -661,21 +724,71 @@ void interpolate_wind_velo(map *maps, int idx, int z, char file[][MAX_STRING_LEN
     fprintf(stdout, ">>>>>>>>>>>> elapsed (data copy): %f sec.\n", i_elaps);
 
     i_start = cpu_second();
-    bool new_call = true;
-    for (int y = 0; y < maps[idx].mass_variable->shape[2]; y++) {
-      for (int x = 0; x < maps[idx].mass_variable->shape[3]; x++) {
+    for (int y = 0; y < NY; y++) {
+      for (int x = 0; x < NX; x++) {
         float longi = maps[idx].mass_longi->val[(y*maps[idx].mass_longi->shape[2])+x];
         float lat   = maps[idx].mass_lat->val[(y*maps[idx].mass_lat->shape[2])+x];
         float u_val = h_mass_grid->u[(y*maps[idx].mass_variable->shape[3])+x];
         float v_val = h_mass_grid->v[(y*maps[idx].mass_variable->shape[3])+x];
-        float u_nn_val = feature_scaling_func(u_val, h_mass_grid->u, NY*NX, &new_call);
-        float v_nn_val = feature_scaling_func(v_val, h_mass_grid->v, NY*NX, &new_call);
         fprintf(f, "%f,%f,%f\n", longi, lat, u_val);
         fprintf(f_bis, "%f,%f,%f\n", longi, lat, v_val);
-        fprintf(f_nn, "%f,%f,%f\n", longi, lat, u_nn_val);
-        fprintf(f_nn_bis, "%f,%f,%f\n", longi, lat, v_nn_val);
       }
     }
+
+    float longi[NY*NX];
+    float lat[NY*NX];
+    float u_nn_val[NY*NX];
+    float v_nn_val[NY*NX];
+
+    bool  new_call = true;
+    int i = 0;
+    for (int y = 0; y < NY; y++) {
+      for (int x = 0; x < NX; x++) {
+        longi[i] = feature_scaling_func(maps[idx].mass_longi->val[(y*maps[idx].mass_longi->shape[2])+x],
+                                        maps[idx].mass_longi->val, NY*NX, &new_call);
+        i++;
+      }
+    }
+
+    new_call = true;
+    i = 0;
+    for (int y = 0; y < NY; y++) {
+      for (int x = 0; x < NX; x++) {
+        lat[i] = feature_scaling_func(maps[idx].mass_lat->val[(y*maps[idx].mass_lat->shape[2])+x],
+                                        maps[idx].mass_lat->val, NY*NX, &new_call);
+        i++;
+      }
+    }
+
+    new_call = true;
+    i = 0;
+    for (int y = 0; y < NY; y++) {
+      for (int x = 0; x < NX; x++) {
+        u_nn_val[i] = feature_scaling_func(h_mass_grid->u[(y*maps[idx].mass_variable->shape[3])+x],
+                                           h_mass_grid->u, NY*NX, &new_call);
+        i++;
+      }
+    }
+
+    new_call = true;
+    i = 0;
+    for (int y = 0; y < NY; y++) {
+      for (int x = 0; x < NX; x++) {
+        v_nn_val[i] = feature_scaling_func(h_mass_grid->v[(y*maps[idx].mass_variable->shape[3])+x],
+                                           h_mass_grid->v, NY*NX, &new_call);
+        i++;
+      }
+    }
+
+    i = 0;
+    for (int y = 0; y < NY; y++) {
+      for (int x = 0; x < NX; x++) {
+        fprintf(f_nn, "%f,%f,%f\n", longi[i], lat[i], u_nn_val[i]);
+        fprintf(f_nn_bis, "%f,%f,%f\n", longi[i], lat[i], v_nn_val[i]);
+        i++;
+      }
+    }
+
     i_elaps = cpu_second() -  i_start;
     fprintf(stdout, ">>>>>>>>>>>> elapsed (write file): %f sec.\n", i_elaps);
 
@@ -864,7 +977,7 @@ int write_data(map *maps, int idx, char *run, bool no_interpol_out, int grid_typ
 #endif
 
   uint num_layers = 0;
-  if (maps[idx].variable->rank > 3) {
+  if (maps[idx].variable->rank > 3 || strcmp(maps[idx].name, "ZNU") == 0 || strcmp(maps[idx].name, "ZNW") == 0) {
     num_layers = maps[idx].variable->shape[1];
   } else num_layers = 1;
 
@@ -930,7 +1043,9 @@ int write_data(map *maps, int idx, char *run, bool no_interpol_out, int grid_typ
         f = fopen(file[0], "w");
       }
     } else {
-      f = fopen(file[0], "w");
+      if (strcmp(maps[idx].name, "ZNU") != 0 && strcmp(maps[idx].name, "ZNW") != 0) {
+        f = fopen(file[0], "w");
+      }
     }
 
     if (strcmp(maps[idx].name, "U") != 0 && strcmp(maps[idx].name, "V") != 0) {
@@ -949,7 +1064,9 @@ int write_data(map *maps, int idx, char *run, bool no_interpol_out, int grid_typ
         write_visual_to_file(f, maps, idx, z);
       }
     } else {
-      write_visual_to_file(f, maps, idx, z);
+      if (strcmp(maps[idx].name, "ZNU") != 0 && strcmp(maps[idx].name, "ZNW") != 0) {
+        write_visual_to_file(f, maps, idx, z);
+      }
     }
 
 #ifdef __NVCC__
@@ -968,7 +1085,9 @@ int write_data(map *maps, int idx, char *run, bool no_interpol_out, int grid_typ
         fclose(f);
       }
     } else {
-      fclose(f);
+      if (strcmp(maps[idx].name, "ZNU") != 0 && strcmp(maps[idx].name, "ZNW") != 0) {
+        fclose(f);
+      }
     }
 
     if (strcmp(maps[idx].name, "U") != 0 && strcmp(maps[idx].name, "V") != 0) {
@@ -1039,7 +1158,7 @@ int process(char files[][MAX_STRING_LENGTH], uint num_files, bool no_interpol_ou
     }
 
     // Open the file. NC_NOWRITE - read-only access to the file
-    fprintf(stdout, "Process file: %s\n", files[i]);
+    fprintf(stdout, "Processing file: %s\n", files[i]);
     if ((retval = nc_open(files[i], NC_NOWRITE, &ncid)))
       ERR(retval);
 
@@ -1052,6 +1171,12 @@ int process(char files[][MAX_STRING_LENGTH], uint num_files, bool no_interpol_ou
 
     uint shape[4];
     uint rank;
+
+    shape[0] = NT; shape[1] = NZ;
+    rank = 2;
+    znu = allocate_tensor(shape, rank);
+    shape[1] = NZ_STAG;
+    znw = allocate_tensor(shape, rank);
 
     shape[0] = NT; shape[1] = NY; shape[2] = NX;
     rank = 3;
@@ -1315,6 +1440,8 @@ int process(char files[][MAX_STRING_LENGTH], uint num_files, bool no_interpol_ou
     if ((retval = nc_close(ncid)))
       ERR(retval);
 
+    deallocate_tensor(znu);
+    deallocate_tensor(znw);
     deallocate_tensor(xlat);
     deallocate_tensor(xlong);
     deallocate_tensor(xlat_u);
@@ -1441,6 +1568,24 @@ int process(char files[][MAX_STRING_LENGTH], uint num_files, bool no_interpol_ou
 
 int main (int argc, const char *argv[]) {
 
+  fprintf(stdout, "Program starting....\n");
+  fprintf(stdout, "Increasing the program stack size to %d.\n", STACK_SIZE);
+
+  // Increase the stack size of the program
+  const rlim_t kStackSize = STACK_SIZE * 1024 * 1024;
+  struct rlimit rl;
+
+  int ret = getrlimit(RLIMIT_STACK, &rl);
+  if (ret == 0) {
+    if (rl.rlim_cur < kStackSize) {
+      rl.rlim_cur = kStackSize;
+      ret = setrlimit(RLIMIT_STACK, &rl);
+      if (ret != 0) {
+        fprintf(stderr, "setrlimit returned ret=%d\n", ret);
+      }
+    }
+  }
+
   // Get the netcdf files to process
   char dir_files[MAX_NUMBER_FILES][MAX_STRING_LENGTH];
   char netcdf_files[MAX_NUMBER_FILES][MAX_STRING_LENGTH];
@@ -1467,6 +1612,11 @@ int main (int argc, const char *argv[]) {
     }
   }
 
+  fprintf(stdout, "Found %d files to process:\n", num_netcdf_files);
+  for (int i = 0; i < num_netcdf_files; i++) {
+    fprintf(stdout, "\t%s.\n", netcdf_files[i]);
+  }
+
   // Set the feature scaling routine
   feature_scaling_pt feature_scaling_func = NULL;
   switch (FEATURE_SCALING) {
@@ -1489,6 +1639,8 @@ int main (int argc, const char *argv[]) {
   free(maps);
   double i_elaps = cpu_second() - i_start;
   fprintf(stdout, ">>>>>>>>>>>> elapsed (total run): %f sec.\n", i_elaps);
+
+  fprintf(stdout, "ALL DONE!\n");
 
   return 0;
 }

@@ -4,6 +4,9 @@
 // The date of the files we are processing
 #define DATE "2018"
 
+// Stack size
+#define STACK_SIZE 16 // MB
+
 // The number of supporting points for the interpolation
 #define NUM_SUPPORTING_POINTS 4
 
