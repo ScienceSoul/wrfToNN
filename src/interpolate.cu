@@ -1,4 +1,3 @@
-#include "params.h"
 #include "interpolate.h"
 
 float radially_interpolate_cpu(float **data,
@@ -324,20 +323,20 @@ __global__ void gpu_radially_interpolate_unstructured(velo_grid *u_grid, velo_gr
     memset(closest_points_idx_u, -1, sizeof(closest_points_idx_u));
     memset(closest_points_idx_v, -1, sizeof(closest_points_idx_v));
 
-    int u_left = (NY*NX_STAG) % UNROLL_SIZE;
-    int v_left = (NY_STAG*NX) % UNROLL_SIZE;
+    int u_left = (NY*NX_STAG) % DEF_UNROLL_SIZE;
+    int v_left = (NY_STAG*NX) % DEF_UNROLL_SIZE;
 
-    float radius_u[UNROLL_SIZE];
-    float radius_v[UNROLL_SIZE];
+    float radius_u[DEF_UNROLL_SIZE];
+    float radius_v[DEF_UNROLL_SIZE];
 
-    __shared__ float ux[UNROLL_SIZE];
-    __shared__ float uy[UNROLL_SIZE];
-    __shared__ float vx[UNROLL_SIZE];
-    __shared__ float vy[UNROLL_SIZE];
-    __shared__ float u_val[UNROLL_SIZE];
-    __shared__ float v_val[UNROLL_SIZE];
+    __shared__ float ux[DEF_UNROLL_SIZE];
+    __shared__ float uy[DEF_UNROLL_SIZE];
+    __shared__ float vx[DEF_UNROLL_SIZE];
+    __shared__ float vy[DEF_UNROLL_SIZE];
+    __shared__ float u_val[DEF_UNROLL_SIZE];
+    __shared__ float v_val[DEF_UNROLL_SIZE];
 
-    for (int u=0, v=0; u<NY*NX_STAG && v<NY_STAG*NX; u+=UNROLL_SIZE, v+=UNROLL_SIZE) {
+    for (int u=0, v=0; u<NY*NX_STAG && v<NY_STAG*NX; u+=DEF_UNROLL_SIZE, v+=DEF_UNROLL_SIZE) {
 
       ux[threadIdx.x] = u_grid->x[u+threadIdx.x];
       uy[threadIdx.x] = u_grid->y[u+threadIdx.x];
@@ -350,7 +349,7 @@ __global__ void gpu_radially_interpolate_unstructured(velo_grid *u_grid, velo_gr
 
       __syncthreads();
 
-      for (int i = 0; i < UNROLL_SIZE; i++) {
+      for (int i = 0; i < DEF_UNROLL_SIZE; i++) {
 
         int uu = u+i;
         int vv = v+i;

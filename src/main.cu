@@ -15,77 +15,26 @@
 #define ERRCODE 2
 #define ERR(e) {printf("Error: %s\n", nc_strerror(e)); exit(ERRCODE);}
 
-// ----------------------------------
-// The global dimensions
-// ----------------------------------
-uint NX      = 660;
-uint NX_STAG = 661;
-
-uint NY      = 710;
-uint NY_STAG = 711;
-
-uint NZ           = 50;
-uint NZ_STAG      = 51;
-uint NZ_SOIL_STAG = 4;
-
-uint NT = 1;
-// ----------------------------------
+// Pointer to the feature scaling routine
+typedef float (*feature_scaling_pt)(float arg1, float *arg2, uint arg3, bool *arg4);
 
 // ------------------------------------------------------
-// The variables
-// ------------------------------------------------------
-typedef enum variables_code {
-    //-----------------------------------
-    // 1D variables
-    //-----------------------------------
-    ZNU=0,     // Eta values on half (mass) levels
-    ZNW,       // Eta values on full (w) levels
+uint NX           = DEF_NX;
+uint NX_STAG      = DEF_NX_STAG;
+uint NY           = DEF_NY;
+uint NY_STAG      = DEF_NY_STAG;
+uint NZ           = DEF_NZ;
+uint NZ_STAG      = DEF_NZ_STAG;
+uint NZ_SOIL_STAG = DEF_NZ_SOIL_STAG;
+uint NT           = DEF_NT;
 
-    //-----------------------------------
-    // 2D variables
-    //-----------------------------------
-    XLAT,      // Latitude
-    XLAT_U,    // x-wind latitude
-    XLAT_V,    // y-wind latitude
-    XLONG,     // Longitute
-    XLONG_U,   // x-wind longitude
-    XLONG_V,   // y-wind longitude
-    SST,       // Sea surface temperature
-    OLR,       // TOA outgoing long wave
+uint NUM_VARIABLES = DEF_NUM_VARIABLES;
 
-    //-----------------------------------
-    // 3D variables
-    // ----------------------------------
-    CLDFRA,    // Cloud fraction
-    P,         // Perturbation pressure
-    PB,        // Base state pressure
-    PH,        // Perturbation geopotential
-    PHB,       // Base-state geopotential
-    P_HYD,     // hydrostatic presure
-    QCLOUD,    // Cloud water mixing fraction
-    QGRAUP,    // Graupel mixing ratio
-    QICE,      // Ice mixing ratio
-    QNGRAUPEL, // Graupel number concentration
-    QNICE,     // Ice number concentration
-    QNRAIN,    // Rain number concentration
-    QNSNOW,    // Snow number concentration
-    QRAIN,     // Rain water mixing ratio
-    QSNOW,     // Snow mixing ratio
-    QVAPOR,    // Water vapor mixing ratio
-    SH2O,      // Soil liquid water
-    SMCREL,    // Relative soil moisture
-    SMOIS,     // Soil moisture
-    T,         // Perturbation potential temperature (theta-t0)
-    TSLB,      // Soil temperature
-    U,         // x-wind component
-    V,         // y-wind component
-    W          // z-wind component
-} variables_code;
-
-int num_variables = 34;
+uint UNROLL_SIZE = DEF_UNROLL_SIZE;
+uint BLOCK_SIZE = DEF_BLOCK_SIZE;
 // ------------------------------------------------------
 
-// ------------------------------------------------------
+// ----------------------block_size--------------------------------
 // The tensors
 // ------------------------------------------------------
 tensor *znu       = NULL;
@@ -146,7 +95,7 @@ map *maps = NULL;
 
 void set_maps(map *maps) {
 
-  for (int i = 0; i < num_variables; i++) {
+  for (int i = 0; i < NUM_VARIABLES; i++) {
 
     switch (i) {
       case ZNU:
@@ -391,9 +340,46 @@ void set_maps(map *maps) {
   }
 }
 
+int get_flag(const char *name) {
+
+  int flag = 0;
+  for (int j = 0; j < NUM_VARIABLES; j++) {
+    if (active_flags[j] != NULL) {
+      char *str = (char *)active_flags[j];
+      char dest[MAX_NUMBER_VARIABLES];
+      memset(dest, 0, sizeof(dest));
+      strcpy(dest, name);
+      strcat(dest, ":");
+      char *var = strstr(str, dest);
+      if (var != NULL ) {
+        char *flag_str =  strstr(str, ":");
+        if (flag_str != NULL) {
+          char flag_val[1];
+          memcpy(flag_val, flag_str+1, sizeof(char));
+          flag = atoi(flag_val);
+        }
+      }
+    }
+  }
+  if (flag < 0 || flag > 1) {
+    fprintf(stderr, "Incorrect activation flag for variabe: %s\n", name);
+    exit(EXIT_FAILURE);
+  }
+  return flag;
+}
+
+void set_maps_hiden_flag(map *maps) {
+
+  for (int i = 0; i < NUM_VARIABLES; i++) {
+    if (get_flag(maps[i].name)) {
+      maps[i].active = true;
+    }
+  }
+}
+
 int check_maps(map *maps) {
   int status = 0;
-  for (int i = 0; i < num_variables; i++) {
+  for (int i = 0; i < NUM_VARIABLES; i++) {
     if (strcmp(maps[i].name, "XLAT")    == 0 || strcmp(maps[i].name, "XLAT_U")  == 0 ||
         strcmp(maps[i].name, "XLAT_V")  == 0 || strcmp(maps[i].name, "XLONG")   == 0 ||
         strcmp(maps[i].name, "XLONG_U") == 0 || strcmp(maps[i].name, "XLONG_V") == 0)
@@ -880,10 +866,7 @@ int write_data(map *maps, int idx, char *run, bool no_interpol_out, int grid_typ
   uint buffer_size = 0;
 #endif
 
-  if (strcmp(maps[idx].name, "XLAT")    == 0 || strcmp(maps[idx].name, "XLAT_U")  == 0 ||
-      strcmp(maps[idx].name, "XLAT_V")  == 0 || strcmp(maps[idx].name, "XLONG")   == 0 ||
-      strcmp(maps[idx].name, "XLONG_U") == 0 || strcmp(maps[idx].name, "XLONG_V") == 0)
-           return 0;
+  if(!maps[idx].active) return 0;
 
 #ifdef __NVCC__
   if (strcmp(maps[idx].name, "V") == 0) return 0;
@@ -1234,9 +1217,10 @@ int process(char files[][MAX_STRING_LENGTH], uint num_files, bool no_interpol_ou
     if (check_maps(maps) != 0) {
       exit(EXIT_FAILURE);
     }
+    set_maps_hiden_flag(maps);
 
     // Load the variables into memory
-    for (int i = 0; i < num_variables; i++) {
+    for (int i = 0; i < NUM_VARIABLES; i++) {
       if ((retval = load_variable(ncid, maps[i].name, maps[i].variable)))
       ERR(retval);
     }
@@ -1430,11 +1414,11 @@ int process(char files[][MAX_STRING_LENGTH], uint num_files, bool no_interpol_ou
 #endif
 
     double i_start = cpu_second();
-    for (int i = 0; i < num_variables; i++) {
+    for (int i = 0; i < NUM_VARIABLES; i++) {
       if (write_data(maps, i, run, no_interpol_out, grid_type, feature_scaling_func) != 0) return -1;
     }
     double i_elaps = cpu_second() - i_start;
-    fprintf(stdout, ">>>>>>>>>>>> elapsed (%d variables): %f sec.\n",  num_variables, i_elaps);
+    fprintf(stdout, ">>>>>>>>>>>> elapsed (%d variables): %f sec.\n", NUM_VARIABLES, i_elaps);
 
     // Close the file, freeing all ressources
     if ((retval = nc_close(ncid)))
@@ -1632,7 +1616,7 @@ int main (int argc, const char *argv[]) {
   }
 
   double i_start = cpu_second();
-  maps = allocate_maps(num_variables);
+  maps = allocate_maps(NUM_VARIABLES);
   if (process(netcdf_files, num_netcdf_files, no_interpol_out, GRID_TYPE, feature_scaling_func) != 0) {
     fprintf(stderr, "Program failed.\n");
   };

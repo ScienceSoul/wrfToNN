@@ -25,6 +25,7 @@ typedef struct map {
   tensor *lat;
   tensor *mass_longi;
   tensor *mass_lat;
+  bool active;
 } map;
 
 tensor *allocate_tensor(uint *shape, uint rank);
