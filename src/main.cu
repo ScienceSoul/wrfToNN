@@ -1589,9 +1589,15 @@ int main (int argc, const char *argv[]) {
 
   get_files_from_dir(WORKDIR, dir_files, &num_files);
 
+  char buffer[MAX_STRING_LENGTH];
+  strncpy(buffer, WORKDIR, MAX_STRING_LENGTH);
+  if (buffer[strlen(buffer)-1] != '/') {
+    strncat(buffer, "/", strlen("/"));
+  }
   for (int i = 0; i < num_files; i++) {
     if (strstr(dir_files[i], "wrfout_") != NULL) {
-      strcpy(netcdf_files[num_netcdf_files], dir_files[i]);
+      strncpy(netcdf_files[num_netcdf_files], buffer, strlen(buffer));
+      strncat(netcdf_files[num_netcdf_files], dir_files[i], strlen(dir_files[i]));
       num_netcdf_files++;
     }
   }
