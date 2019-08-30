@@ -34,7 +34,7 @@ uint UNROLL_SIZE = DEF_UNROLL_SIZE;
 uint BLOCK_SIZE = DEF_BLOCK_SIZE;
 // ------------------------------------------------------
 
-// ----------------------block_size--------------------------------
+// ------------------------------------------------------
 // The tensors
 // ------------------------------------------------------
 tensor *znu       = NULL;
@@ -71,6 +71,7 @@ tensor *smois     = NULL;
 tensor *tslb      = NULL;
 tensor *u         = NULL;
 tensor *v         = NULL;
+tensor *pressure  = NULL;
 // ------------------------------------------------------
 
 // ------------------------------------------------------
@@ -336,6 +337,13 @@ void set_maps(map *maps) {
         maps[i].longi = xlong;
         maps[i].lat = xlat;
         break;
+      case PRESSURE:
+        maps[i].name = "PRESSURE";
+        maps[i].out_name = "PRESSURE";
+        maps[i].variable = pressure;
+        maps[i].longi = xlong;
+        maps[i].lat = xlat;
+        break;
     }
   }
 }
@@ -346,33 +354,27 @@ int get_flag(const char *name) {
   for (int j = 0; j < NUM_VARIABLES; j++) {
     if (active_flags[j] != NULL) {
       char *str = (char *)active_flags[j];
-      char dest[MAX_NUMBER_VARIABLES];
+      char dest[MAX_STRING_LENGTH];
       memset(dest, 0, sizeof(dest));
       strcpy(dest, name);
-      strcat(dest, ":");
-      char *var = strstr(str, dest);
-      if (var != NULL ) {
-        char *flag_str =  strstr(str, ":");
-        if (flag_str != NULL) {
-          char flag_val[1];
-          memcpy(flag_val, flag_str+1, sizeof(char));
-          flag = atoi(flag_val);
-        }
+      strcat(dest, ":1");
+
+      if (strcmp(str, dest) == 0) {
+        flag = 1;
+        break;
       }
     }
-  }
-  if (flag < 0 || flag > 1) {
-    fprintf(stderr, "Incorrect activation flag for variabe: %s\n", name);
-    exit(EXIT_FAILURE);
   }
   return flag;
 }
 
 void set_maps_hiden_flag(map *maps) {
 
+  fprintf(stdout, "Active variables: %s\n");
   for (int i = 0; i < NUM_VARIABLES; i++) {
     if (get_flag(maps[i].name)) {
       maps[i].active = true;
+      printf("%s\n", maps[i].name);
     }
   }
 }
@@ -409,10 +411,17 @@ void get_files_from_dir(const char *directory, char files[][MAX_STRING_LENGTH], 
   closedir(d);
 }
 
-int load_variable(int ncid, const char *var_name, tensor * t) {
+int load_variable(int ncid, const char *var_name, tensor * t, bool *is_pressure) {
 
   int retval = 0;
   int varid;
+
+  // The special case of the full pressure
+  // Will be computed later after first loading P and PB
+  if (strcmp(var_name, "PRESSURE") == 0) {
+    *is_pressure = true;
+    return retval;
+  }
 
   retval = nc_inq_varid(ncid, var_name, &varid);
   retval = nc_get_var_float(ncid, varid, t->val);
@@ -465,18 +474,22 @@ void set_path(char dir[], char *run, const char *out_name) {
   strncat(dir, out_name, strlen(out_name));
 }
 
+void get_horizontal_dims(int idx, uint *nx, uint *ny) {
+  if (maps[idx].variable->rank > 3) {
+    *ny = maps[idx].variable->shape[2];
+    *nx = maps[idx].variable->shape[3];
+  } else {
+    *ny = maps[idx].variable->shape[1];
+    *nx = maps[idx].variable->shape[2];
+  }
+}
+
 void write_visual_to_file(FILE *file, map *maps, int idx, int z) {
 
   uint nx = 0;
   uint ny = 0;
 
-  if (maps[idx].variable->rank > 3) {
-    ny = maps[idx].variable->shape[2];
-    nx = maps[idx].variable->shape[3];
-  } else {
-    ny = maps[idx].variable->shape[1];
-    nx = maps[idx].variable->shape[2];
-  }
+  get_horizontal_dims(idx, &nx, &ny);
 
   fprintf(file, "longitude,latitude,%s\n", maps[idx].out_name);
 
@@ -495,13 +508,7 @@ void write_nn_to_file(FILE *file, map *maps, int idx, int z, feature_scaling_pt 
   uint nx = 0;
   uint ny = 0;
 
-  if (maps[idx].variable->rank > 3) {
-    ny = maps[idx].variable->shape[2];
-    nx = maps[idx].variable->shape[3];
-  } else {
-    ny = maps[idx].variable->shape[1];
-    nx = maps[idx].variable->shape[2];
-  }
+  get_horizontal_dims(idx, &nx, &ny);
 
   if (strcmp(maps[idx].name, "ZNU") == 0 || strcmp(maps[idx].name, "ZNW") == 0) {
     fprintf(file, "%s\n", maps[idx].out_name);
@@ -1195,6 +1202,7 @@ int process(char files[][MAX_STRING_LENGTH], uint num_files, bool no_interpol_ou
     qsnow     = allocate_tensor(shape, rank);
     qvapor    = allocate_tensor(shape, rank);
     t         = allocate_tensor(shape, rank);
+    pressure   = allocate_tensor(shape, rank);
 
     shape[1] = NZ_STAG;
     ph    = allocate_tensor(shape, rank);
@@ -1220,9 +1228,33 @@ int process(char files[][MAX_STRING_LENGTH], uint num_files, bool no_interpol_ou
     set_maps_hiden_flag(maps);
 
     // Load the variables into memory
+    bool is_pressure = false;
     for (int i = 0; i < NUM_VARIABLES; i++) {
-      if ((retval = load_variable(ncid, maps[i].name, maps[i].variable)))
+      if ((retval = load_variable(ncid, maps[i].name, maps[i].variable, &is_pressure)))
       ERR(retval);
+    }
+
+    // If required, compute the full pressure here
+    if (is_pressure) {
+      float *p = maps[P].variable->val;
+      float *pb = maps[PB].variable->val;
+      float *pressure = maps[PRESSURE].variable->val;
+
+      uint nx = 0;
+      uint ny = 0;
+
+      get_horizontal_dims(PRESSURE, &nx, &ny);
+
+      int num_layers = maps[PRESSURE].variable->shape[1];
+
+      for (int z = 0; z < num_layers; z++) {
+        for (int y = 0; y < ny; y++) {
+          for (int x = 0; x < nx; x++) {
+            float val   = p[(z*(ny*nx))+((y*nx)+x)] + pb[(z*(ny*nx))+((y*nx)+x)];
+            pressure[(z*(ny*nx))+((y*nx)+x)] = val;
+          }
+        }
+      }
     }
 
     if (grid_type == STRUCTURED) {
@@ -1458,6 +1490,7 @@ int process(char files[][MAX_STRING_LENGTH], uint num_files, bool no_interpol_ou
     deallocate_tensor(u);
     deallocate_tensor(v);
     deallocate_tensor(w);
+    deallocate_tensor(pressure);
 
     if (grid_type == STRUCTURED) {
       free(h_velo_u_grid->x);

@@ -2,10 +2,10 @@
 #define params_h
 
 // The working directory
-#define WORKDIR "/home/seddik/Documents/workdir/WRF_Jebi"
+#define WORKDIR "/home/seddik/Documents/workdir/OSSE_CTL"
 
 // The date of the files we are processing
-#define DATE "2018"
+#define DATE "2013"
 
 // Stack size
 #define STACK_SIZE 16 // MB
@@ -32,14 +32,14 @@ enum {
 // ----------------------------------
 // The global dimensions
 // ----------------------------------
-#define DEF_NX 660;
-#define DEF_NX_STAG 661;
+#define DEF_NX 762;
+#define DEF_NX_STAG 763;
 
-#define DEF_NY 710;
-#define DEF_NY_STAG 711;
+#define DEF_NY 420;
+#define DEF_NY_STAG 421;
 
-#define DEF_NZ 50;
-#define DEF_NZ_STAG 51;
+#define DEF_NZ 40;
+#define DEF_NZ_STAG 41;
 #define DEF_NZ_SOIL_STAG 4;
 
 #define DEF_NT 1;
@@ -93,10 +93,11 @@ typedef enum variables_code {
     TSLB,      // Soil temperature
     U,         // x-wind component
     V,         // y-wind component
-    W          // z-wind component
+    W,         // z-wind component
+    PRESSURE   // The full pressure = P + PB
 } variables_code;
 
-#define DEF_NUM_VARIABLES 34;
+#define DEF_NUM_VARIABLES 35;
 
 const char *active_flags[] = {"ZNU:1",
                               "ZNW:1",
@@ -110,11 +111,12 @@ const char *active_flags[] = {"ZNU:1",
                               "OLR:0",
                               "CLDFRA:0",
                               "P:1",
-                              "PB:0",
+                              "PB:1",
                               "PH:0",
                               "PHB:0",
                               "P_HYD:1",
                               "QCLOUD:0",
+                              "QGRAUP:0",
                               "QICE:0",
                               "QNGRAUPEL:0",
                               "QNICE:0",
@@ -130,6 +132,7 @@ const char *active_flags[] = {"ZNU:1",
                               "TSLB:0",
                               "U:1",
                               "V:1",
-                              "W:0"};
+                              "W:0",
+                              "PRESSURE:1"};
 
 #endif
