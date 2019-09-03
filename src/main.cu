@@ -72,6 +72,8 @@ tensor *tslb      = NULL;
 tensor *u         = NULL;
 tensor *v         = NULL;
 tensor *pressure  = NULL;
+tensor *cor_east  = NULL;
+tensor *cor_north = NULL;
 // ------------------------------------------------------
 
 // ------------------------------------------------------
@@ -93,6 +95,13 @@ tensor *pressure  = NULL;
 // ----------------------------------
 map *maps = NULL;
 // ----------------------------------
+
+// ------------------------------------------------------
+// Used to check if the coriolis force will be computed
+// ------------------------------------------------------
+bool is_cor_east = false;
+bool is_cor_north = false;
+// ------------------------------------------------------
 
 void set_maps(map *maps) {
 
@@ -344,6 +353,20 @@ void set_maps(map *maps) {
         maps[i].longi = xlong;
         maps[i].lat = xlat;
         break;
+      case COR_EAST:
+        maps[i].name = "COR_EAST";
+        maps[i].out_name = "COR_EAST";
+        maps[i].variable = cor_east;
+        maps[i].longi = xlong;
+        maps[i].lat = xlat;
+        break;
+      case COR_NORTH:
+        maps[i].name = "COR_NORTH";
+        maps[i].out_name = "COR_NORTH";
+        maps[i].variable = cor_north;
+        maps[i].longi = xlong;
+        maps[i].lat = xlat;
+        break;
     }
   }
 }
@@ -370,11 +393,11 @@ int get_flag(const char *name) {
 
 void set_maps_hiden_flag(map *maps) {
 
-  fprintf(stdout, "Active variables: %s\n");
+  fprintf(stdout, "Active variables: \n");
   for (int i = 0; i < NUM_VARIABLES; i++) {
     if (get_flag(maps[i].name)) {
       maps[i].active = true;
-      printf("%s\n", maps[i].name);
+      printf("\t%s\n", maps[i].name);
     }
   }
 }
@@ -411,15 +434,24 @@ void get_files_from_dir(const char *directory, char files[][MAX_STRING_LENGTH], 
   closedir(d);
 }
 
-int load_variable(int ncid, const char *var_name, tensor * t, bool *is_pressure) {
+int load_variable(int ncid, const char *var_name, tensor * t, bool *pressure, bool *cor_east,
+                  bool *cor_north) {
 
   int retval = 0;
   int varid;
 
-  // The special case of the full pressure
-  // Will be computed later after first loading P and PB
+  // The special case of the full pressure, coriolis east and coriolus north
+  // Will be computed later after first loading the needed fvariable to do so
   if (strcmp(var_name, "PRESSURE") == 0) {
-    *is_pressure = true;
+    *pressure = true;
+    return retval;
+  }
+  if (strcmp(var_name, "COR_EAST") == 0) {
+    *cor_east = true;
+    return retval;
+  }
+  if (strcmp(var_name, "COR_NORTH") == 0) {
+    *cor_north = true;
     return retval;
   }
 
@@ -785,6 +817,38 @@ void interpolate_wind_velo(map *maps, int idx, int z, char file[][MAX_STRING_LEN
     i_elaps = cpu_second() -  i_start;
     fprintf(stdout, ">>>>>>>>>>>> elapsed (write file): %f sec.\n", i_elaps);
 
+    // If the coriolis force is needed, store here the interpolated
+    // velocities that will be needed later
+    if (is_cor_east) {
+      float *coriolis = maps[COR_EAST].variable->val;
+
+      uint nx = 0;
+      uint ny = 0;
+      get_horizontal_dims(COR_EAST, &nx, &ny);
+
+      for (int y = 0; y < NY; y++) {
+        for (int x = 0; x < NX; x++) {
+          float v_val = h_mass_grid->v[(y*maps[V].mass_variable->shape[3])+x];
+          coriolis[(z*(ny*nx))+((y*nx)+x)] = v_val;
+        }
+      }
+    }
+
+    if (is_cor_north) {
+      float *coriolis = maps[COR_NORTH].variable->val;
+
+      uint nx = 0;
+      uint ny = 0;
+      get_horizontal_dims(COR_NORTH, &nx, &ny);
+
+      for (int y = 0; y < NY; y++) {
+        for (int x = 0; x < NX; x++) {
+          float u_val = h_mass_grid->u[(y*maps[U].mass_variable->shape[3])+x];
+          coriolis[(z*(ny*nx))+((y*nx)+x)] = u_val;
+        }
+      }
+    }
+
 #else
     int num_data;
     int dim = 2;
@@ -852,6 +916,30 @@ void interpolate_wind_velo(map *maps, int idx, int z, char file[][MAX_STRING_LEN
         fprintf(f,  "%f,%f,%f\n", longi, lat, interpol[i]);
         fprintf(f_nn, "%f,%f,%f\n", longi, lat, val);
         i++;
+      }
+    }
+
+    if (is_cor_north || is_cor_east) {
+      float *coriolis = NULL;
+
+      if (strcmp(maps[idx].name, "U") == 0) {
+        coriolis = maps[COR_NORTH].variable->val;
+      } else {
+        coriolis = maps[COR_EAST].variable->val;
+      }
+
+      uint nx = 0;
+      uint ny = 0;
+
+      if (is_cor_north) get_horizontal_dims(COR_NORTH, &nx, &ny);
+      if (is_cor_east) get_horizontal_dims(COR_EAST, &nx, &ny);
+
+      int i = 0;
+      for (int y = 0; y < NY; y++) {
+        for (int x = 0; x < NX; x++) {
+          coriolis[(z*(ny*nx))+((y*nx)+x)] = interpol[i];
+          i++;
+        }
       }
     }
 
@@ -1054,7 +1142,9 @@ int write_data(map *maps, int idx, char *run, bool no_interpol_out, int grid_typ
         write_visual_to_file(f, maps, idx, z);
       }
     } else {
-      if (strcmp(maps[idx].name, "ZNU") != 0 && strcmp(maps[idx].name, "ZNW") != 0) {
+      // Note:  write if needed the coriolis force later
+      if (strcmp(maps[idx].name, "ZNU") != 0 && strcmp(maps[idx].name, "ZNW") != 0 &&
+          strcmp(maps[idx].name, "COR_EAST") != 0 && strcmp(maps[idx].name, "COR_NORTH") != 0) {
         write_visual_to_file(f, maps, idx, z);
       }
     }
@@ -1066,7 +1156,9 @@ int write_data(map *maps, int idx, char *run, bool no_interpol_out, int grid_typ
 #endif
 
     // Write the scaled values for NN, here only the non-interpolated variable
-    if (strcmp(maps[idx].name, "U") != 0 && strcmp(maps[idx].name, "V") != 0) {
+    // Note:  write if needed the scaled coriolis force later
+    if (strcmp(maps[idx].name, "U") != 0 && strcmp(maps[idx].name, "V") != 0 &&
+        strcmp(maps[idx].name, "COR_EAST") != 0 && strcmp(maps[idx].name, "COR_NORTH") != 0) {
       write_nn_to_file(f_nn, maps, idx, z, feature_scaling_func);
     }
 
@@ -1075,12 +1167,14 @@ int write_data(map *maps, int idx, char *run, bool no_interpol_out, int grid_typ
         fclose(f);
       }
     } else {
-      if (strcmp(maps[idx].name, "ZNU") != 0 && strcmp(maps[idx].name, "ZNW") != 0) {
+      if (strcmp(maps[idx].name, "ZNU") != 0 && strcmp(maps[idx].name, "ZNW") != 0 &&
+          strcmp(maps[idx].name, "COR_EAST") != 0 && strcmp(maps[idx].name, "COR_NORTH") != 0) {
         fclose(f);
       }
     }
 
-    if (strcmp(maps[idx].name, "U") != 0 && strcmp(maps[idx].name, "V") != 0) {
+    if (strcmp(maps[idx].name, "U") != 0 && strcmp(maps[idx].name, "V") != 0 &&
+        strcmp(maps[idx].name, "COR_EAST") != 0 && strcmp(maps[idx].name, "COR_NORTH") != 0) {
       fclose(f_nn);
     }
 #ifdef __NVCC__
@@ -1114,6 +1208,60 @@ int write_data(map *maps, int idx, char *run, bool no_interpol_out, int grid_typ
       interpolate_wind_velo(maps, idx, z, interpol_file, file_nn, buffer, grid_type, feature_scaling_func);
 #endif
     }
+
+    if (strcmp(maps[idx].name, "COR_EAST") == 0 && is_cor_east) {
+      float *lat = maps[XLAT].variable->val;
+      float *coriolis = maps[COR_EAST].variable->val;
+
+      uint nx = 0;
+      uint ny = 0;
+
+      float earth_angular_velocity = 7.2921e-5; // rad/s
+
+      get_horizontal_dims(COR_EAST, &nx, &ny);
+
+      for (int y = 0; y < ny; y++) {
+        for (int x = 0; x < nx; x++) {
+          float v_val = coriolis[(z*(ny*nx))+((y*nx)+x)];
+          float rad_lat = lat[(y*nx)+x] * M_PI/180.0f;
+          float val = v_val * 2.0f * earth_angular_velocity * sinf(rad_lat);
+          coriolis[(z*(ny*nx))+((y*nx)+x)] = val;
+        }
+      }
+
+      write_visual_to_file(f, maps, idx, z);
+      write_nn_to_file(f_nn, maps, idx, z, feature_scaling_func);
+      fclose(f);
+      fclose(f_nn);
+    }
+
+    if (strcmp(maps[idx].name, "COR_NORTH") == 0 && is_cor_north) {
+      float *lat = maps[XLAT].variable->val;
+      float *coriolis = maps[COR_NORTH].variable->val;
+
+      uint nx = 0;
+      uint ny = 0;
+
+      float earth_angular_velocity = 7.2921e-5; // rad/s
+
+      get_horizontal_dims(COR_NORTH, &nx, &ny);
+
+      for (int y = 0; y < ny; y++) {
+        for (int x = 0; x < nx; x++) {
+          float u_val = coriolis[(z*(ny*nx))+((y*nx)+x)];
+          float rad_lat = lat[(y*nx)+x] * M_PI/180.0f;
+          float val = -u_val * 2.0f * earth_angular_velocity * sinf(rad_lat);
+          coriolis[(z*(ny*nx))+((y*nx)+x)] = val;
+        }
+      }
+
+      write_visual_to_file(f, maps, idx, z);
+      write_nn_to_file(f_nn, maps, idx, z, feature_scaling_func);
+      fclose(f);
+      fclose(f_nn);
+    }
+
+
   } // End z loop
   double i_elaps = cpu_second() - i_start;
   fprintf(stdout, ">>>>>>>>>>>> elapsed (%d layers): %f sec.\n",  num_layers, i_elaps);
@@ -1202,7 +1350,9 @@ int process(char files[][MAX_STRING_LENGTH], uint num_files, bool no_interpol_ou
     qsnow     = allocate_tensor(shape, rank);
     qvapor    = allocate_tensor(shape, rank);
     t         = allocate_tensor(shape, rank);
-    pressure   = allocate_tensor(shape, rank);
+    pressure  = allocate_tensor(shape, rank);
+    cor_east  = allocate_tensor(shape, rank);
+    cor_north = allocate_tensor(shape, rank);
 
     shape[1] = NZ_STAG;
     ph    = allocate_tensor(shape, rank);
@@ -1230,7 +1380,7 @@ int process(char files[][MAX_STRING_LENGTH], uint num_files, bool no_interpol_ou
     // Load the variables into memory
     bool is_pressure = false;
     for (int i = 0; i < NUM_VARIABLES; i++) {
-      if ((retval = load_variable(ncid, maps[i].name, maps[i].variable, &is_pressure)))
+      if ((retval = load_variable(ncid, maps[i].name, maps[i].variable, &is_pressure, &is_cor_east, &is_cor_north)))
       ERR(retval);
     }
 
@@ -1491,6 +1641,8 @@ int process(char files[][MAX_STRING_LENGTH], uint num_files, bool no_interpol_ou
     deallocate_tensor(v);
     deallocate_tensor(w);
     deallocate_tensor(pressure);
+    deallocate_tensor(cor_east);
+    deallocate_tensor(cor_north);
 
     if (grid_type == STRUCTURED) {
       free(h_velo_u_grid->x);

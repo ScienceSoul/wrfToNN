@@ -94,10 +94,12 @@ typedef enum variables_code {
     U,         // x-wind component
     V,         // y-wind component
     W,         // z-wind component
-    PRESSURE   // The full pressure = P + PB
+    PRESSURE,  // The full pressure = P + PB
+    COR_EAST,  // Coriolis force directed due East
+    COR_NORTH  // Coriolis force directed due North
 } variables_code;
 
-#define DEF_NUM_VARIABLES 35;
+#define DEF_NUM_VARIABLES 37;
 
 const char *active_flags[] = {"ZNU:1",
                               "ZNW:1",
@@ -133,6 +135,8 @@ const char *active_flags[] = {"ZNU:1",
                               "U:1",
                               "V:1",
                               "W:0",
-                              "PRESSURE:1"};
+                              "PRESSURE:1",
+                              "COR_EAST:1",
+                              "COR_NORTH:1"};
 
 #endif
