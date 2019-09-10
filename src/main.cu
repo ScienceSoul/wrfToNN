@@ -46,6 +46,9 @@ tensor *xlong_u   = NULL;
 tensor *xlat_v    = NULL;
 tensor *xlong_v   = NULL;
 tensor *sst       = NULL;
+tensor *mu        = NULL;
+tensor *mub       = NULL;
+tensor *dry_mass  = NULL;
 tensor *olr       = NULL;
 tensor *cldfra    = NULL;
 tensor *p         = NULL;
@@ -162,6 +165,27 @@ void set_maps(map *maps) {
         maps[i].name = "SST";
         maps[i].out_name = "SST";
         maps[i].variable = sst;
+        maps[i].longi = xlong;
+        maps[i].lat = xlat;
+        break;
+      case MU:
+        maps[i].name = "MU";
+        maps[i].out_name = "MU";
+        maps[i].variable = mu;
+        maps[i].longi = xlong;
+        maps[i].lat = xlat;
+        break;
+      case MUB:
+        maps[i].name = "MUB";
+        maps[i].out_name = "MUB";
+        maps[i].variable = mub;
+        maps[i].longi = xlong;
+        maps[i].lat = xlat;
+        break;
+      case DRY_MASS:
+        maps[i].name = "DRY_MASS";
+        maps[i].out_name = "DRY_MASS";
+        maps[i].variable = dry_mass;
         maps[i].longi = xlong;
         maps[i].lat = xlat;
         break;
@@ -435,13 +459,14 @@ void get_files_from_dir(const char *directory, char files[][MAX_STRING_LENGTH], 
 }
 
 int load_variable(int ncid, const char *var_name, tensor * t, bool *pressure, bool *cor_east,
-                  bool *cor_north) {
+                  bool *cor_north, bool *dry_mass) {
 
   int retval = 0;
   int varid;
 
-  // The special case of the full pressure, coriolis east and coriolus north
-  // Will be computed later after first loading the needed fvariable to do so
+  // The special case of the full pressure, coriolis east and coriolus north,
+  // and the full dry mass
+  // Will be computed later after first loading the needed variable to do so
   if (strcmp(var_name, "PRESSURE") == 0) {
     *pressure = true;
     return retval;
@@ -452,6 +477,10 @@ int load_variable(int ncid, const char *var_name, tensor * t, bool *pressure, bo
   }
   if (strcmp(var_name, "COR_NORTH") == 0) {
     *cor_north = true;
+    return retval;
+  }
+  if (strcmp(var_name, "DRY_MASS") == 0) {
+    *dry_mass = true;
     return retval;
   }
 
@@ -1333,6 +1362,10 @@ int process(char files[][MAX_STRING_LENGTH], uint num_files, bool no_interpol_ou
     sst = allocate_tensor(shape, rank);
     olr = allocate_tensor(shape, rank);
 
+    mu = allocate_tensor(shape, rank);
+    mub = allocate_tensor(shape, rank);
+    dry_mass = allocate_tensor(shape, rank);
+
     shape[0] = NT; shape[1] = NZ; shape[2] = NY; shape[3] = NX;
     rank = 4;
     cldfra    = allocate_tensor(shape, rank);
@@ -1379,9 +1412,12 @@ int process(char files[][MAX_STRING_LENGTH], uint num_files, bool no_interpol_ou
 
     // Load the variables into memory
     bool is_pressure = false;
+    bool is_dry_mass = false;
     for (int i = 0; i < NUM_VARIABLES; i++) {
-      if ((retval = load_variable(ncid, maps[i].name, maps[i].variable, &is_pressure, &is_cor_east, &is_cor_north)))
-      ERR(retval);
+      if ((retval = load_variable(ncid, maps[i].name, maps[i].variable, &is_pressure, &is_cor_east, &is_cor_north,
+                                  &is_dry_mass))) {
+          ERR(retval);
+        }
     }
 
     // If required, compute the full pressure here
@@ -1400,9 +1436,29 @@ int process(char files[][MAX_STRING_LENGTH], uint num_files, bool no_interpol_ou
       for (int z = 0; z < num_layers; z++) {
         for (int y = 0; y < ny; y++) {
           for (int x = 0; x < nx; x++) {
-            float val   = p[(z*(ny*nx))+((y*nx)+x)] + pb[(z*(ny*nx))+((y*nx)+x)];
+            float val = p[(z*(ny*nx))+((y*nx)+x)] + pb[(z*(ny*nx))+((y*nx)+x)];
             pressure[(z*(ny*nx))+((y*nx)+x)] = val;
           }
+        }
+      }
+    }
+
+    // If required, compute the full dry air mass here
+    if (is_dry_mass) {
+      float *dry_mass = maps[DRY_MASS].variable->val;
+      float *mu = maps[MU].variable->val;
+      float *mub = maps[MUB].variable->val;
+
+      uint nx = 0;
+      uint ny = 0;
+
+      get_horizontal_dims(DRY_MASS, &nx, &ny);
+
+      int num_layers = 1;
+
+      for (int y = 0; y < ny; y++) {
+        for (int x = 0; x < nx; x++) {
+          dry_mass[(y*nx)+x] = mu[(y*nx)+x] + mub[(y*nx)+x];
         }
       }
     }
@@ -1615,6 +1671,9 @@ int process(char files[][MAX_STRING_LENGTH], uint num_files, bool no_interpol_ou
     deallocate_tensor(xlat_v);
     deallocate_tensor(xlong_v);
     deallocate_tensor(sst);
+    deallocate_tensor(mu);
+    deallocate_tensor(mub);
+    deallocate_tensor(dry_mass);
     deallocate_tensor(olr);
     deallocate_tensor(cldfra);
     deallocate_tensor(p);

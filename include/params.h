@@ -65,9 +65,12 @@ typedef enum variables_code {
     XLONG_U,   // x-wind longitude
     XLONG_V,   // y-wind longitude
     SST,       // Sea surface temperature
+    MU,        // Perturbation dry air mass in column
+    MUB,       // Base state dry air mass in column
+    DRY_MASS,  // The full dry air mass in column
     OLR,       // TOA outgoing long wave
-
     //-----------------------------------
+
     // 3D variables
     // ----------------------------------
     CLDFRA,    // Cloud fraction
@@ -99,7 +102,7 @@ typedef enum variables_code {
     COR_NORTH  // Coriolis force directed due North
 } variables_code;
 
-#define DEF_NUM_VARIABLES 37;
+#define DEF_NUM_VARIABLES 40;
 
 const char *active_flags[] = {"ZNU:1",
                               "ZNW:1",
@@ -110,6 +113,9 @@ const char *active_flags[] = {"ZNU:1",
                               "XLONG_U:0",
                               "XLONG_V:0",
                               "SST:0",
+                              "MU:0",
+                              "MUB:0",
+                              "DRY_MASS:1",
                               "OLR:0",
                               "CLDFRA:0",
                               "P:1",
