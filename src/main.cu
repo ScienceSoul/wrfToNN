@@ -37,46 +37,47 @@ uint BLOCK_SIZE = DEF_BLOCK_SIZE;
 // ------------------------------------------------------
 // The tensors
 // ------------------------------------------------------
-tensor *znu       = NULL;
-tensor *znw       = NULL;
-tensor *xlat      = NULL;
-tensor *xlong     = NULL;
-tensor *xlat_u    = NULL;
-tensor *xlong_u   = NULL;
-tensor *xlat_v    = NULL;
-tensor *xlong_v   = NULL;
-tensor *sst       = NULL;
-tensor *mu        = NULL;
-tensor *mub       = NULL;
-tensor *dry_mass  = NULL;
-tensor *olr       = NULL;
-tensor *cldfra    = NULL;
-tensor *p         = NULL;
-tensor *pb        = NULL;
-tensor *phyd      = NULL;
-tensor *qcloud    = NULL;
-tensor *qgraup    = NULL;
-tensor *qice      = NULL;
-tensor *qngraupel = NULL;
-tensor *qnice     = NULL;
-tensor *qnrain    = NULL;
-tensor *qnsnow    = NULL;
-tensor *qrain     = NULL;
-tensor *qsnow     = NULL;
-tensor *qvapor    = NULL;
-tensor *t         = NULL;
-tensor *ph        = NULL;
-tensor *phb       = NULL;
-tensor *w         = NULL;
-tensor *sh2o      = NULL;
-tensor *smcrel    = NULL;
-tensor *smois     = NULL;
-tensor *tslb      = NULL;
-tensor *u         = NULL;
-tensor *v         = NULL;
-tensor *pressure  = NULL;
-tensor *cor_east  = NULL;
-tensor *cor_north = NULL;
+tensor *znu          = NULL;
+tensor *znw          = NULL;
+tensor *xlat         = NULL;
+tensor *xlong        = NULL;
+tensor *xlat_u       = NULL;
+tensor *xlong_u      = NULL;
+tensor *xlat_v       = NULL;
+tensor *xlong_v      = NULL;
+tensor *sst          = NULL;
+tensor *mu           = NULL;
+tensor *mub          = NULL;
+tensor *dry_mass     = NULL;
+tensor *olr          = NULL;
+tensor *cldfra       = NULL;
+tensor *p            = NULL;
+tensor *pb           = NULL;
+tensor *phyd         = NULL;
+tensor *qcloud       = NULL;
+tensor *qgraup       = NULL;
+tensor *qice         = NULL;
+tensor *qngraupel    = NULL;
+tensor *qnice        = NULL;
+tensor *qnrain       = NULL;
+tensor *qnsnow       = NULL;
+tensor *qrain        = NULL;
+tensor *qsnow        = NULL;
+tensor *qvapor       = NULL;
+tensor *t            = NULL;
+tensor *ph           = NULL;
+tensor *phb          = NULL;
+tensor *w            = NULL;
+tensor *sh2o         = NULL;
+tensor *smcrel       = NULL;
+tensor *smois        = NULL;
+tensor *tslb         = NULL;
+tensor *u            = NULL;
+tensor *v            = NULL;
+tensor *pressure     = NULL;
+tensor *cor_east     = NULL;
+tensor *cor_north    = NULL;
+tensor *geopotential = NULL;
 // ------------------------------------------------------
 
 // ------------------------------------------------------
@@ -90,21 +91,23 @@ tensor *cor_north = NULL;
   velo_grid *d_velo_u_grid = NULL;
   velo_grid *d_velo_v_grid = NULL;
   mass_grid *d_mass_grid   = NULL;
-#endif
-// ------------------------------------------------------
 
+  velo_grid *h_velo_w_grid = NULL;
+  velo_grid *d_velo_w_grid = NULL;
+
+  velo_grid *h_base_geopot_grid = NULL;
+  velo_grid *d_base_geopot_grid = NULL;
+
+  velo_grid *h_pert_geopot_grid = NULL;
+  velo_grid *d_pert_geopot_grid = NULL;
+#endif
+
+// ------------------------------------------------------
 // ----------------------------------
 // The variable->tensor mappings
 // ----------------------------------
 map *maps = NULL;
 // ----------------------------------
-
-// ------------------------------------------------------
-// Used to check if the coriolis force will be computed
-// ------------------------------------------------------
-bool is_cor_east = false;
-bool is_cor_north = false;
-// ------------------------------------------------------
 
 void set_maps(map *maps) {
 
@@ -391,6 +394,13 @@ void set_maps(map *maps) {
         maps[i].longi = xlong;
         maps[i].lat = xlat;
         break;
+      case GEOPOTENTIAL:
+        maps[i].name = "GEOPOTENTIAL";
+        maps[i].out_name = "GEOPOT";
+        maps[i].variable = geopotential;
+        maps[i].longi = xlong;
+        maps[i].lat = xlat;
+        break;
     }
   }
 }
@@ -415,13 +425,36 @@ int get_flag(const char *name) {
   return flag;
 }
 
-void set_maps_hiden_flag(map *maps) {
+void set_maps_active(map *maps) {
 
   fprintf(stdout, "Active variables: \n");
   for (int i = 0; i < NUM_VARIABLES; i++) {
     if (get_flag(maps[i].name)) {
       maps[i].active = true;
       printf("\t%s\n", maps[i].name);
+    }
+  }
+}
+
+void check_depedencies(map *maps) {
+
+  if (maps[COR_EAST].active) {
+    if(!maps[V].active) {
+      fprintf(stderr, "Coriolis-East is active but missing y-wind.\n");
+      exit(EXIT_FAILURE);
+    }
+  }
+  if (maps[COR_NORTH].active) {
+    if(!maps[U].active) {
+      fprintf(stderr, "Coriolis-North is active but missing x-wind.\n");
+      exit(EXIT_FAILURE);
+    }
+  }
+
+  if (maps[GEOPOTENTIAL].active) {
+    if (!maps[PH].active || !maps[PHB].active) {
+      fprintf(stderr, "Full geopotential is active but missing base state or perturbation geopotential.\n");
+      exit(EXIT_FAILURE);
     }
   }
 }
@@ -458,8 +491,7 @@ void get_files_from_dir(const char *directory, char files[][MAX_STRING_LENGTH], 
   closedir(d);
 }
 
-int load_variable(int ncid, const char *var_name, tensor * t, bool *pressure, bool *cor_east,
-                  bool *cor_north, bool *dry_mass) {
+int load_variable(int ncid, const char *var_name, tensor * t) {
 
   int retval = 0;
   int varid;
@@ -468,19 +500,18 @@ int load_variable(int ncid, const char *var_name, tensor * t, bool *pressure, bo
   // and the full dry mass
   // Will be computed later after first loading the needed variable to do so
   if (strcmp(var_name, "PRESSURE") == 0) {
-    *pressure = true;
     return retval;
   }
   if (strcmp(var_name, "COR_EAST") == 0) {
-    *cor_east = true;
     return retval;
   }
   if (strcmp(var_name, "COR_NORTH") == 0) {
-    *cor_north = true;
     return retval;
   }
   if (strcmp(var_name, "DRY_MASS") == 0) {
-    *dry_mass = true;
+    return retval;
+  }
+  if (strcmp(var_name, "GEOPOTENTIAL") == 0) {
     return retval;
   }
 
@@ -623,7 +654,7 @@ void write_nn_to_file(FILE *file, map *maps, int idx, int z, feature_scaling_pt 
   }
 }
 
-void get_neighbors_coordinates(velo_grid *h_velo_u_grid, velo_grid *h_velo_v_grid, map *maps,
+void get_neighbors_coordinates_horiz(velo_grid *h_velo_u_grid, velo_grid *h_velo_v_grid, map *maps,
       uint NY_STAG, uint NX_STAG, uint NY, uint NX, uint num_support_points) {
 
   // Get the coordinates of the neighbors of each point in the grid NY x NX
@@ -669,7 +700,7 @@ void get_neighbors_coordinates(velo_grid *h_velo_u_grid, velo_grid *h_velo_v_gri
   }
 }
 
-void get_neighbors_values(velo_grid *h_velo_u_grid, velo_grid *h_velo_v_grid, map *maps,
+void get_neighbors_values_horiz(velo_grid *h_velo_u_grid, velo_grid *h_velo_v_grid, map *maps,
       uint NY_STAG, uint NX_STAG, uint NY, uint NX, int z, uint num_support_points) {
 
   // Get the values of the neighbors of each point in the grid NY x NX
@@ -703,11 +734,143 @@ void get_neighbors_values(velo_grid *h_velo_u_grid, velo_grid *h_velo_v_grid, ma
   }
 }
 
+void get_neighbors_values_vert(velo_grid *h_grid, map *maps, uint var, uint NY, uint NX, int z,
+  uint num_support_points) {
+
+  // Get the coordinates of the neighbors in the vertical direction in the
+  // grid NY x NX. The neighbors are taken from the W grid
+  // Only for two supporting points
+  for (int i = 0; i < num_support_points; i++) {
+    int idx = 0;
+    for (int j = 0; j < NY; j++) {
+      for(int k = 0; k < NX; k++) {
+        h_grid->val[((NY*NX)*i)+idx] = maps[var].variable->val[((z+i)*NY*NX)+(NX*j)+k];
+        idx++;
+      }
+    }
+  }
+}
+
+void staggered_var_scaling(float *u, float *v, float *w, float *longi, float *lat,
+     uint NX, uint NY, map *maps, mass_grid *h_mass_grid, int idx, bool scale_u, bool scale_v, bool scale_w,
+     bool scale_phb, bool scale_ph, feature_scaling_pt feature_scaling_func) {
+
+
+  tensor *long_pt = NULL;
+  tensor *lat_pt = NULL;
+
+  if (scale_u || scale_v) {
+    long_pt = maps[idx].mass_longi;
+    lat_pt = maps[idx].mass_lat;
+  } else if (scale_w || scale_phb || scale_ph) {
+    long_pt = maps[idx].longi;
+    lat_pt = maps[idx].lat;
+  } else {
+    fprintf(stderr, "Which variable to scale is not given.\n");
+    exit(EXIT_FAILURE);
+  }
+
+  bool  new_call = true;
+  int i = 0;
+  for (int y = 0; y < NY; y++) {
+    for (int x = 0; x < NX; x++) {
+      longi[i] = feature_scaling_func(long_pt->val[(y*long_pt->shape[2])+x], long_pt->val, NY*NX, &new_call);
+      i++;
+    }
+  }
+
+  new_call = true;
+  i = 0;
+  for (int y = 0; y < NY; y++) {
+    for (int x = 0; x < NX; x++) {
+      lat[i] = feature_scaling_func(lat_pt->val[(y*lat_pt->shape[2])+x], lat_pt->val, NY*NX, &new_call);
+      i++;
+    }
+  }
+
+  if (scale_u) {
+    if (u == NULL) {
+      fprintf(stderr, "Scale U but null pointer.\n");
+      exit(EXIT_FAILURE);
+    }
+    new_call = true;
+    i = 0;
+    for (int y = 0; y < NY; y++) {
+      for (int x = 0; x < NX; x++) {
+        u[i] = feature_scaling_func(h_mass_grid->u[(y*maps[idx].mass_variable->shape[3])+x],
+                    h_mass_grid->u, NY*NX, &new_call);
+        i++;
+      }
+    }
+  }
+
+  if (scale_v) {
+    if (v == NULL) {
+      fprintf(stderr, "Scale V but null pointer.\n");
+      exit(EXIT_FAILURE);
+    }
+    new_call = true;
+    i = 0;
+    for (int y = 0; y < NY; y++) {
+      for (int x = 0; x < NX; x++) {
+        v[i] = feature_scaling_func(h_mass_grid->v[(y*maps[idx].mass_variable->shape[3])+x],
+                    h_mass_grid->v, NY*NX, &new_call);
+        i++;
+      }
+    }
+  }
+
+  if (scale_w) {
+    if (w == NULL) {
+      fprintf(stderr, "Scale W but null pointer.\n");
+      exit(EXIT_FAILURE);
+    }
+    new_call = true;
+    i = 0;
+    for (int y = 0; y < NY; y++) {
+      for (int x = 0; x < NX; x++) {
+        w[i] = feature_scaling_func(h_mass_grid->w[(y*maps[idx].variable->shape[3])+x],
+                    h_mass_grid->w, NY*NX, &new_call);
+      }
+    }
+  }
+
+  if (scale_phb) {
+    if (w == NULL) {
+      fprintf(stderr, "Scale base geopotential but null pointer.\n");
+      exit(EXIT_FAILURE);
+    }
+    new_call = true;
+    i = 0;
+    for (int y = 0; y < NY; y++) {
+      for (int x = 0; x < NX; x++) {
+        w[i] = feature_scaling_func(h_mass_grid->phb[(y*maps[idx].variable->shape[3])+x],
+                    h_mass_grid->phb, NY*NX, &new_call);
+      }
+    }
+  }
+
+  if (scale_ph) {
+    if (w == NULL) {
+      fprintf(stderr, "Scale perturbation geopotential but null pointer.\n");
+      exit(EXIT_FAILURE);
+    }
+    new_call = true;
+    i = 0;
+    for (int y = 0; y < NY; y++) {
+      for (int x = 0; x < NX; x++) {
+        w[i] = feature_scaling_func(h_mass_grid->ph[(y*maps[idx].variable->shape[3])+x],
+                    h_mass_grid->ph, NY*NX, &new_call);
+      }
+    }
+  }
+}
+
 #ifdef __NVCC__
-void interpolate_wind_velo(map *maps, int idx, int z, char file[][MAX_STRING_LENGTH], char file_nn[][MAX_STRING_LENGTH],
+void interpolate_wind_velo_horiz(map *maps, int idx, int z, char file[][MAX_STRING_LENGTH], char file_nn[][MAX_STRING_LENGTH],
                           dim3 block, dim3 grid, int grid_type, feature_scaling_pt feature_scaling_func) {
 #else
-void interpolate_wind_velo(map *maps, int idx, int z, char file[][MAX_STRING_LENGTH], char file_nn[][MAX_STRING_LENGTH],
+void interpolate_wind_velo_horiz(map *maps, int idx, int z, char file[][MAX_STRING_LENGTH], char file_nn[][MAX_STRING_LENGTH],
                          float **buffer, int grid_type, feature_scaling_pt feature_scaling_func) {
 #endif
 
@@ -734,8 +897,8 @@ void interpolate_wind_velo(map *maps, int idx, int z, char file[][MAX_STRING_LEN
     if (grid_type == STRUCTURED) {
       // Get the neighbors values of the mass points
       double nv = cpu_second();
-      get_neighbors_values(h_velo_u_grid, h_velo_v_grid, maps, NY_STAG, NX_STAG, NY, NX, z, NUM_SUPPORTING_POINTS);
-      fprintf(stdout, "Time to get neighbors values: %f sec.\n", cpu_second() - nv);
+      get_neighbors_values_horiz(h_velo_u_grid, h_velo_v_grid, maps, NY_STAG, NX_STAG, NY, NX, z, NUM_SUPPORTING_POINTS_HORIZ);
+      fprintf(stdout, "Time to get neighbors values (horiz): %f sec.\n", cpu_second() - nv);
     }
 
 #ifdef __NVCC__
@@ -744,19 +907,19 @@ void interpolate_wind_velo(map *maps, int idx, int z, char file[][MAX_STRING_LEN
       {
         float *v[1];
         cudaMemcpy(&(v[0]), &(d_velo_u_grid[0].val), sizeof(float *), cudaMemcpyDeviceToHost);
-        cudaMemcpy(v[0], h_velo_u_grid->val, (NY*NX*NUM_SUPPORTING_POINTS)*sizeof(float), cudaMemcpyHostToDevice);
+        cudaMemcpy(v[0], h_velo_u_grid->val, (NY*NX*NUM_SUPPORTING_POINTS_HORIZ)*sizeof(float), cudaMemcpyHostToDevice);
       }
       {
         float *vv[1];
         cudaMemcpy(&(vv[0]), &(d_velo_v_grid[0].val), sizeof(float *), cudaMemcpyDeviceToHost);
-        cudaMemcpy(vv[0], h_velo_v_grid->val, (NY*NX*NUM_SUPPORTING_POINTS)*sizeof(float), cudaMemcpyHostToDevice);
+        cudaMemcpy(vv[0], h_velo_v_grid->val, (NY*NX*NUM_SUPPORTING_POINTS_HORIZ)*sizeof(float), cudaMemcpyHostToDevice);
       }
-  }
+    }
 
     double i_start = cpu_second();
     if (grid_type == STRUCTURED) {
-        gpu_radially_interpolate_structured<<<grid, block>>>(d_velo_u_grid, d_velo_v_grid, d_mass_grid,
-                                    NY, NX, NUM_SUPPORTING_POINTS, 2.0f);
+        gpu_radially_interpolate_structured_horiz<<<grid, block>>>(d_velo_u_grid, d_velo_v_grid, d_mass_grid,
+                                    NY, NX, NUM_SUPPORTING_POINTS_HORIZ, 2.0f);
     } else {
         gpu_radially_interpolate_unstructured <<< grid, block >>>(d_velo_u_grid, d_velo_v_grid, d_mass_grid,
                                     NY_STAG, NX_STAG, NY, NX, z, 2, 4, 2.0f);
@@ -794,47 +957,10 @@ void interpolate_wind_velo(map *maps, int idx, int z, char file[][MAX_STRING_LEN
     float u_nn_val[NY*NX];
     float v_nn_val[NY*NX];
 
-    bool  new_call = true;
+    staggered_var_scaling(u_nn_val, v_nn_val, NULL, longi, lat, NX, NY, maps, h_mass_grid, idx, true, true, false,
+                     false, false, feature_scaling_func);
+
     int i = 0;
-    for (int y = 0; y < NY; y++) {
-      for (int x = 0; x < NX; x++) {
-        longi[i] = feature_scaling_func(maps[idx].mass_longi->val[(y*maps[idx].mass_longi->shape[2])+x],
-                                        maps[idx].mass_longi->val, NY*NX, &new_call);
-        i++;
-      }
-    }
-
-    new_call = true;
-    i = 0;
-    for (int y = 0; y < NY; y++) {
-      for (int x = 0; x < NX; x++) {
-        lat[i] = feature_scaling_func(maps[idx].mass_lat->val[(y*maps[idx].mass_lat->shape[2])+x],
-                                        maps[idx].mass_lat->val, NY*NX, &new_call);
-        i++;
-      }
-    }
-
-    new_call = true;
-    i = 0;
-    for (int y = 0; y < NY; y++) {
-      for (int x = 0; x < NX; x++) {
-        u_nn_val[i] = feature_scaling_func(h_mass_grid->u[(y*maps[idx].mass_variable->shape[3])+x],
-                                           h_mass_grid->u, NY*NX, &new_call);
-        i++;
-      }
-    }
-
-    new_call = true;
-    i = 0;
-    for (int y = 0; y < NY; y++) {
-      for (int x = 0; x < NX; x++) {
-        v_nn_val[i] = feature_scaling_func(h_mass_grid->v[(y*maps[idx].mass_variable->shape[3])+x],
-                                           h_mass_grid->v, NY*NX, &new_call);
-        i++;
-      }
-    }
-
-    i = 0;
     for (int y = 0; y < NY; y++) {
       for (int x = 0; x < NX; x++) {
         fprintf(f_nn, "%f,%f,%f\n", longi[i], lat[i], u_nn_val[i]);
@@ -848,7 +974,7 @@ void interpolate_wind_velo(map *maps, int idx, int z, char file[][MAX_STRING_LEN
 
     // If the coriolis force is needed, store here the interpolated
     // velocities that will be needed later
-    if (is_cor_east) {
+    if (maps[COR_EAST].active) {
       float *coriolis = maps[COR_EAST].variable->val;
 
       uint nx = 0;
@@ -863,7 +989,7 @@ void interpolate_wind_velo(map *maps, int idx, int z, char file[][MAX_STRING_LEN
       }
     }
 
-    if (is_cor_north) {
+    if (maps[COR_NORTH].active) {
       float *coriolis = maps[COR_NORTH].variable->val;
 
       uint nx = 0;
@@ -925,7 +1051,7 @@ void interpolate_wind_velo(map *maps, int idx, int z, char file[][MAX_STRING_LEN
         float lat   = maps[idx].mass_lat->val[(y*maps[idx].mass_lat->shape[2])+x];
         if (grid_type == STRUCTURED) {
           interpol[i] = cpu_radially_interpolate_structured(pt_to_grid, &longi, &lat,
-                            grid_idx, NY, NX, NUM_SUPPORTING_POINTS, 2.0f);
+                            grid_idx, NY, NX, NUM_SUPPORTING_POINTS_HORIZ, 2.0f);
             grid_idx++;
         } else {
           interpol[i] = cpu_radially_interpolate_unstructured(buffer, &longi, &lat, NULL, num_data, dim, directions,
@@ -948,20 +1074,19 @@ void interpolate_wind_velo(map *maps, int idx, int z, char file[][MAX_STRING_LEN
       }
     }
 
-    if (is_cor_north || is_cor_east) {
+    if (maps[COR_EAST].active || maps[COR_NORTH].active) {
       float *coriolis = NULL;
-
-      if (strcmp(maps[idx].name, "U") == 0) {
-        coriolis = maps[COR_NORTH].variable->val;
-      } else {
-        coriolis = maps[COR_EAST].variable->val;
-      }
 
       uint nx = 0;
       uint ny = 0;
 
-      if (is_cor_north) get_horizontal_dims(COR_NORTH, &nx, &ny);
-      if (is_cor_east) get_horizontal_dims(COR_EAST, &nx, &ny);
+      if (strcmp(maps[idx].name, "U") == 0) {
+        coriolis = maps[COR_NORTH].variable->val;
+        get_horizontal_dims(COR_NORTH, &nx, &ny);
+      } else {
+        coriolis = maps[COR_EAST].variable->val;
+        get_horizontal_dims(COR_EAST, &nx, &ny);
+      }
 
       int i = 0;
       for (int y = 0; y < NY; y++) {
@@ -979,9 +1104,184 @@ void interpolate_wind_velo(map *maps, int idx, int z, char file[][MAX_STRING_LEN
 #ifdef __NVCC__
     fclose(f_bis);
     fclose(f_nn_bis);
+#endif
 }
+
+#ifdef __NVCC__
+void interpolate_var_vert(velo_grid *h_var_grid, velo_grid *d_var_grid, float *mass_var, map *maps, int idx,
+  int z, char file[][MAX_STRING_LENGTH], char file_nn[][MAX_STRING_LENGTH], dim3 block, dim3 grid,
+  int grid_type, feature_scaling_pt feature_scaling_func) {
+#else
+void interpolate_var_vert(velo_grid *h_var_grid, map *maps, int idx, int z, char file[][MAX_STRING_LENGTH],
+  char file_nn[][MAX_STRING_LENGTH], float **buffer, int grid_typeinterpolate_var_vert, feature_scaling_pt feature_scaling_func) {
 #endif
 
+    FILE *f = fopen(file[0], "w");
+    fprintf(f, "longitude,latitude,%s\n", maps[idx].out_name);
+
+    FILE *f_nn = fopen(file_nn[0], "w");
+    fprintf(f_nn, "longitude,latitude,%s\n", maps[idx].out_name);
+
+    fprintf(stdout, "( ------ Interpolate %s at layer %d\n", maps[idx].name, z);
+
+    if (grid_type == STRUCTURED) {
+      // Get the neighbors values of the mass points
+      double nv = cpu_second();
+      get_neighbors_values_vert(h_var_grid, maps, idx, NY, NX, z, NUM_SUPPORTING_POINTS_VERT);
+      fprintf(stdout, "Time to get neighbors values (vert): %f sec.\n", cpu_second() - nv);
+    }
+
+#ifdef __NVCC__
+
+    if (grid_type == STRUCTURED) {
+      {
+        float *v[1];
+        cudaMemcpy(&(v[0]), &(d_var_grid[0].val), sizeof(float *), cudaMemcpyDeviceToHost);
+        cudaMemcpy(v[0], h_var_grid->val, (NY*NX*NUM_SUPPORTING_POINTS_VERT)*sizeof(float), cudaMemcpyHostToDevice);
+      }
+    }
+
+    double i_start = cpu_second();
+    if (grid_type == STRUCTURED) {
+        float z_level;
+        float z_level_stag_under;
+        float z_level_stag_above;
+        z_level = maps[ZNU].variable->val[(NZ-1)-z];
+        z_level_stag_under = maps[ZNW].variable->val[(NZ_STAG-1)-z];
+        z_level_stag_above = maps[ZNW].variable->val[(NZ_STAG-1)-z-1];
+
+        gpu_radially_interpolate_structured_vert<<<grid, block>>>(d_var_grid, d_mass_grid,
+                                    NY, NX, z_level, z_level_stag_under, z_level_stag_above,
+                                    NUM_SUPPORTING_POINTS_VERT, 2.0f);
+    } else {
+        // TODO: Need to be implemented if we need that
+    }
+
+    cudaDeviceSynchronize();
+    double i_elaps = cpu_second() - i_start;
+    fprintf(stdout, ">>>>>>>>>>>> elapsed (compute): %f sec.\n", i_elaps);
+
+    i_start = cpu_second();
+    float *w_mass[1];
+    cudaMemcpy(&(w_mass[0]), &(d_mass_grid[0].w), sizeof(float *), cudaMemcpyDeviceToHost);
+    cudaMemcpy(mass_var, w_mass[0], (NY*NX)*sizeof(float), cudaMemcpyDeviceToHost);
+
+    i_elaps = cpu_second() - i_start;
+    fprintf(stdout, ">>>>>>>>>>>> elapsed (data copy): %f sec.\n", i_elaps);
+
+    i_start = cpu_second();
+    for (int y = 0; y < NY; y++) {
+      for (int x = 0; x < NX; x++) {
+        float longi = maps[idx].longi->val[(y*maps[idx].longi->shape[2])+x];
+        float lat   = maps[idx].lat->val[(y*maps[idx].lat->shape[2])+x];
+        float w_val = mass_var[(y*maps[idx].variable->shape[3])+x];
+        fprintf(f, "%f,%f,%f\n", longi, lat, w_val);
+      }
+    }
+
+    float longi[NY*NX];
+    float lat[NY*NX];
+    float w_nn_val[NY*NX];
+
+    if (strcmp(maps[idx].name, "W") == 0) {
+      staggered_var_scaling(NULL, NULL, w_nn_val, longi, lat, NX, NY, maps, h_mass_grid, idx, false, false, true,
+                    false, false, feature_scaling_func);
+    } else if (strcmp(maps[idx].name, "PHB") == 0) {
+      staggered_var_scaling(NULL, NULL, w_nn_val, longi, lat, NX, NY, maps, h_mass_grid, idx, false, false, false,
+                    true, false, feature_scaling_func);
+    } else if (strcmp(maps[idx].name, "PH") == 0) {
+      staggered_var_scaling(NULL, NULL, w_nn_val, longi, lat, NX, NY, maps, h_mass_grid, idx, false, false, false,
+                    false, true, feature_scaling_func);
+    }
+
+    int i = 0;
+    for (int y = 0; y < NY; y++) {
+      for (int x = 0; x < NX; x++) {
+        fprintf(f_nn, "%f,%f,%f\n", longi[i], lat[i], w_nn_val[i]);
+        i++;
+      }
+    }
+
+    i_elaps = cpu_second() -  i_start;
+    fprintf(stdout, ">>>>>>>>>>>> elapsed (write file): %f sec.\n", i_elaps);
+
+    // If the full geopotential is needed, store here the interpolated
+    // base and perturbation geopotential that will be needed later
+    if (maps[GEOPOTENTIAL].active) {
+      if (strcmp(maps[idx].name, "PHB") == 0 || strcmp(maps[idx].name, "PH") == 0) {
+        float *pt = NULL;
+        uint nx = 0;
+        uint ny = 0;
+
+        if (strcmp(maps[idx].name, "PHB") == 0) {
+          pt = maps[PHB].variable->val;
+          get_horizontal_dims(PHB, &nx, &ny);
+        } else {
+          pt = maps[PH].variable->val;
+          get_horizontal_dims(PH, &nx, &ny);
+        }
+
+        for (int y = 0; y < ny; y++) {
+          for (int x = 0; x < nx; x++) {
+            pt[(z*(ny*nx))+((y*nx)+x)] = mass_var[(y*nx)+x];
+          }
+        }
+      }
+    }
+
+#else
+
+    if (grid_type == UNSTRUCTURED) {
+      // TODO: Need to be implemented if we need that
+    }
+
+    int grid_idx = 0;
+    velo_grid *pt_to_grid = NULL;
+    if (grid_type == STRUCTURED) {
+      pt_to_grid = h_var_grid;
+    }
+
+    uint ny = maps[idx].variable->shape[2];
+    uint nx = maps[idx].variable->shape[3];
+    float interpo[ny*nx];
+    uint i = 0;
+    for (int y = 0; y < ny; y++) {
+      for (int x = 0; x < nx; x++) {
+        float longi = maps[idx].longi->val[(y*maps[idx].longi->shape[2])+x];
+        float lat   = maps[idx].lat->val[(y*maps[idx].lat->shape[2])+x];
+        if (grid_type == STRUCTURED) {
+          interpol[i] = cpu_radially_interpolate_structured_vert(pt_to_grid, &longi, &lat,
+                            grid_idx, NY, NX, NUM_SUPPORTING_POINTS_VERT, 2.0f);
+            grid_idx++;
+        } else {
+          // TODO: Need to be implemented if we need that
+        }
+        i++;
+      }
+    }
+
+    bool new_call = true;
+    i = 0;
+    for (int y = 0; y < ny; y++) {
+      for (int x = 0; x < nx; x++) {
+        float longi = maps[idx].longi->val[(y*maps[idx].longi->shape[2])+x];
+        float lat   = maps[idx].lat->val[(y*maps[idx].lat->shape[2])+x];
+        float val   = feature_scaling_func(interpol[i], interpol, ny*nx, &new_call);
+        fprintf(f,  "%f,%f,%f\n", longi, lat, interpol[i]);
+        fprintf(f_nn, "%f,%f,%f\n", longi, lat, val);
+        i++;
+      }
+    }
+
+#endif
+
+    fclose(f);
+    fclose(f_nn);
+}
+
+//---------------------------------------------------------------------------------------------------------------------
+//--------------------------------------------- Data write routine ----------------------------------------------------
+//---------------------------------------------------------------------------------------------------------------------
 int write_data(map *maps, int idx, char *run, bool no_interpol_out, int grid_type,
                feature_scaling_pt feature_scaling_func) {
 
@@ -1086,6 +1386,8 @@ int write_data(map *maps, int idx, char *run, bool no_interpol_out, int grid_typ
   uint num_layers = 0;
   if (maps[idx].variable->rank > 3 || strcmp(maps[idx].name, "ZNU") == 0 || strcmp(maps[idx].name, "ZNW") == 0) {
     num_layers = maps[idx].variable->shape[1];
+    if (strcmp(maps[idx].name, "W") == 0 || strcmp(maps[idx].name, "PH") == 0 ||
+        strcmp(maps[idx].name, "PHB") == 0) num_layers--;
   } else num_layers = 1;
 
   double i_start = cpu_second();
@@ -1150,13 +1452,17 @@ int write_data(map *maps, int idx, char *run, bool no_interpol_out, int grid_typ
         f = fopen(file[0], "w");
       }
     } else {
-      if (strcmp(maps[idx].name, "ZNU") != 0 && strcmp(maps[idx].name, "ZNW") != 0) {
-        f = fopen(file[0], "w");
+      if (strcmp(maps[idx].name, "ZNU") != 0 && strcmp(maps[idx].name, "ZNW") != 0 &&
+          strcmp(maps[idx].name, "W") != 0 && strcmp(maps[idx].name, "PHB") != 0 &&
+          strcmp(maps[idx].name, "PH") != 0) {
+            f = fopen(file[0], "w");
       }
     }
 
-    if (strcmp(maps[idx].name, "U") != 0 && strcmp(maps[idx].name, "V") != 0) {
-      f_nn = fopen(file_nn[0], "w");
+    if (strcmp(maps[idx].name, "U") != 0 && strcmp(maps[idx].name, "V") != 0 &&
+        strcmp(maps[idx].name, "W") != 0 && strcmp(maps[idx].name, "PHB") != 0 &&
+        strcmp(maps[idx].name, "PH") != 0) {
+          f_nn = fopen(file_nn[0], "w");
     }
 
 #ifdef __NVCC__
@@ -1173,8 +1479,10 @@ int write_data(map *maps, int idx, char *run, bool no_interpol_out, int grid_typ
     } else {
       // Note:  write if needed the coriolis force later
       if (strcmp(maps[idx].name, "ZNU") != 0 && strcmp(maps[idx].name, "ZNW") != 0 &&
-          strcmp(maps[idx].name, "COR_EAST") != 0 && strcmp(maps[idx].name, "COR_NORTH") != 0) {
-        write_visual_to_file(f, maps, idx, z);
+          strcmp(maps[idx].name, "COR_EAST") != 0 && strcmp(maps[idx].name, "COR_NORTH") != 0 &&
+          strcmp(maps[idx].name, "W") != 0 && strcmp(maps[idx].name, "PHB") != 0 &&
+          strcmp(maps[idx].name, "PH") != 0 && strcmp(maps[idx].name, "GEOPOTENTIAL") != 0) {
+            write_visual_to_file(f, maps, idx, z);
       }
     }
 
@@ -1187,8 +1495,10 @@ int write_data(map *maps, int idx, char *run, bool no_interpol_out, int grid_typ
     // Write the scaled values for NN, here only the non-interpolated variable
     // Note:  write if needed the scaled coriolis force later
     if (strcmp(maps[idx].name, "U") != 0 && strcmp(maps[idx].name, "V") != 0 &&
-        strcmp(maps[idx].name, "COR_EAST") != 0 && strcmp(maps[idx].name, "COR_NORTH") != 0) {
-      write_nn_to_file(f_nn, maps, idx, z, feature_scaling_func);
+        strcmp(maps[idx].name, "COR_EAST") != 0 && strcmp(maps[idx].name, "COR_NORTH") != 0 &&
+        strcmp(maps[idx].name, "W") != 0 && strcmp(maps[idx].name, "PHB") != 0 &&
+        strcmp(maps[idx].name, "PH") != 0 && strcmp(maps[idx].name, "GEOPOTENTIAL") != 0) {
+          write_nn_to_file(f_nn, maps, idx, z, feature_scaling_func);
     }
 
     if (strcmp(maps[idx].name, "U") == 0 || strcmp(maps[idx].name, "V") == 0) {
@@ -1197,26 +1507,23 @@ int write_data(map *maps, int idx, char *run, bool no_interpol_out, int grid_typ
       }
     } else {
       if (strcmp(maps[idx].name, "ZNU") != 0 && strcmp(maps[idx].name, "ZNW") != 0 &&
-          strcmp(maps[idx].name, "COR_EAST") != 0 && strcmp(maps[idx].name, "COR_NORTH") != 0) {
-        fclose(f);
+          strcmp(maps[idx].name, "COR_EAST") != 0 && strcmp(maps[idx].name, "COR_NORTH") != 0 &&
+          strcmp(maps[idx].name, "W") != 0 && strcmp(maps[idx].name, "PHB") != 0 &&
+          strcmp(maps[idx].name, "PH") != 0 && strcmp(maps[idx].name, "GEOPOTENTIAL") != 0) {
+            fclose(f);
       }
     }
 
     if (strcmp(maps[idx].name, "U") != 0 && strcmp(maps[idx].name, "V") != 0 &&
-        strcmp(maps[idx].name, "COR_EAST") != 0 && strcmp(maps[idx].name, "COR_NORTH") != 0) {
-      fclose(f_nn);
+        strcmp(maps[idx].name, "COR_EAST") != 0 && strcmp(maps[idx].name, "COR_NORTH") != 0 &&
+        strcmp(maps[idx].name, "W") != 0 && strcmp(maps[idx].name, "PHB") != 0 &&
+        strcmp(maps[idx].name, "PH") != 0 && strcmp(maps[idx].name, "GEOPOTENTIAL") != 0) {
+          fclose(f_nn);
     }
 #ifdef __NVCC__
     if(strcmp(maps[idx].name, "U") == 0) {
       if(no_interpol_out) fclose(f_bis);
     }
-#endif
-
-    // Interpolate the horizontal wind components at the mass points
-#ifdef __NVCC__
-    if (strcmp(maps[idx].name, "U") == 0) {
-#else
-    if (strcmp(maps[idx].name, "U") == 0 || strcmp(maps[idx].name, "V") == 0) {
 #endif
 
 #ifdef __NVCC__
@@ -1231,66 +1538,130 @@ int write_data(map *maps, int idx, char *run, bool no_interpol_out, int grid_typ
     dim3 grid ((n_points + block.x-1)/block.x);
 #endif
 
+    // Interpolate the horizontal wind components at the mass points
 #ifdef __NVCC__
-      interpolate_wind_velo(maps, idx, z, interpol_file, file_nn, block, grid, grid_type, feature_scaling_func);
+    if (strcmp(maps[idx].name, "U") == 0) {
 #else
-      interpolate_wind_velo(maps, idx, z, interpol_file, file_nn, buffer, grid_type, feature_scaling_func);
+    if (strcmp(maps[idx].name, "U") == 0 || strcmp(maps[idx].name, "V") == 0) {
+#endif
+
+#ifdef __NVCC__
+      interpolate_wind_velo_horiz(maps, idx, z, interpol_file, file_nn, block, grid, grid_type, feature_scaling_func);
+#else
+      interpolate_wind_velo_horiz(maps, idx, z, interpol_file, file_nn, buffer, grid_type, feature_scaling_func);
 #endif
     }
 
-    if (strcmp(maps[idx].name, "COR_EAST") == 0 && is_cor_east) {
-      float *lat = maps[XLAT].variable->val;
-      float *coriolis = maps[COR_EAST].variable->val;
-
-      uint nx = 0;
-      uint ny = 0;
-
-      float earth_angular_velocity = 7.2921e-5; // rad/s
-
-      get_horizontal_dims(COR_EAST, &nx, &ny);
-
-      for (int y = 0; y < ny; y++) {
-        for (int x = 0; x < nx; x++) {
-          float v_val = coriolis[(z*(ny*nx))+((y*nx)+x)];
-          float rad_lat = lat[(y*nx)+x] * M_PI/180.0f;
-          float val = v_val * 2.0f * earth_angular_velocity * sinf(rad_lat);
-          coriolis[(z*(ny*nx))+((y*nx)+x)] = val;
-        }
-      }
-
-      write_visual_to_file(f, maps, idx, z);
-      write_nn_to_file(f_nn, maps, idx, z, feature_scaling_func);
-      fclose(f);
-      fclose(f_nn);
+    if (strcmp(maps[idx].name, "W") == 0) {
+#ifdef __NVCC__
+      interpolate_var_vert(h_velo_w_grid, d_velo_w_grid, h_mass_grid->w, maps, idx, z, file, file_nn,
+                           block, grid, grid_type, feature_scaling_func);
+#else
+      interpolate_var_vert(h_velo_w_grid, maps, idx, z, file, file_nn, buffer, grid_type,
+                                 feature_scaling_func);
+#endif
     }
 
-    if (strcmp(maps[idx].name, "COR_NORTH") == 0 && is_cor_north) {
-      float *lat = maps[XLAT].variable->val;
-      float *coriolis = maps[COR_NORTH].variable->val;
-
-      uint nx = 0;
-      uint ny = 0;
-
-      float earth_angular_velocity = 7.2921e-5; // rad/s
-
-      get_horizontal_dims(COR_NORTH, &nx, &ny);
-
-      for (int y = 0; y < ny; y++) {
-        for (int x = 0; x < nx; x++) {
-          float u_val = coriolis[(z*(ny*nx))+((y*nx)+x)];
-          float rad_lat = lat[(y*nx)+x] * M_PI/180.0f;
-          float val = -u_val * 2.0f * earth_angular_velocity * sinf(rad_lat);
-          coriolis[(z*(ny*nx))+((y*nx)+x)] = val;
-        }
-      }
-
-      write_visual_to_file(f, maps, idx, z);
-      write_nn_to_file(f_nn, maps, idx, z, feature_scaling_func);
-      fclose(f);
-      fclose(f_nn);
+    if (strcmp(maps[idx].name, "PHB") == 0) {
+#ifdef __NVCC__
+      interpolate_var_vert(h_base_geopot_grid, d_base_geopot_grid, h_mass_grid->phb, maps, idx, z, file,
+                           file_nn, block, grid, grid_type, feature_scaling_func);
+#else
+      interpolate_var_vert(h_base_geopot_grid, maps, idx, z, file, file_nn, buffer, grid_type,
+                           feature_scaling_func);
+#endif
     }
 
+    if (strcmp(maps[idx].name, "PH") == 0) {
+#ifdef __NVCC__
+      interpolate_var_vert(h_pert_geopot_grid, d_pert_geopot_grid, h_mass_grid->ph, maps, idx, z, file,
+                     file_nn, block, grid, grid_type, feature_scaling_func);
+#else
+      interpolate_var_vert(h_pert_geopot_grid, maps, idx, z, file, file_nn, buffer, grid_type,
+                     feature_scaling_func);
+#endif
+    }
 
+    if (strcmp(maps[idx].name, "COR_EAST") == 0) {
+      if (maps[idx].active) {
+        float *lat = maps[XLAT].variable->val;
+        float *coriolis = maps[COR_EAST].variable->val;
+
+        uint nx = 0;
+        uint ny = 0;
+
+        float earth_angular_velocity = 7.2921e-5; // rad/s
+
+        get_horizontal_dims(COR_EAST, &nx, &ny);
+
+        for (int y = 0; y < ny; y++) {
+          for (int x = 0; x < nx; x++) {
+            float v_val = coriolis[(z*(ny*nx))+((y*nx)+x)];
+            float rad_lat = lat[(y*nx)+x] * M_PI/180.0f;
+            float val = v_val * 2.0f * earth_angular_velocity * sinf(rad_lat);
+            coriolis[(z*(ny*nx))+((y*nx)+x)] = val;
+          }
+        }
+
+        write_visual_to_file(f, maps, idx, z);
+        write_nn_to_file(f_nn, maps, idx, z, feature_scaling_func);
+        fclose(f);
+        fclose(f_nn);
+      }
+    }
+
+    if (strcmp(maps[idx].name, "COR_NORTH") == 0) {
+      if (maps[idx].active) {
+        float *lat = maps[XLAT].variable->val;
+        float *coriolis = maps[COR_NORTH].variable->val;
+
+        uint nx = 0;
+        uint ny = 0;
+
+        float earth_angular_velocity = 7.2921e-5; // rad/s
+
+        get_horizontal_dims(COR_NORTH, &nx, &ny);
+
+        for (int y = 0; y < ny; y++) {
+          for (int x = 0; x < nx; x++) {
+            float u_val = coriolis[(z*(ny*nx))+((y*nx)+x)];
+            float rad_lat = lat[(y*nx)+x] * M_PI/180.0f;
+            float val = -u_val * 2.0f * earth_angular_velocity * sinf(rad_lat);
+            coriolis[(z*(ny*nx))+((y*nx)+x)] = val;
+          }
+        }
+
+        write_visual_to_file(f, maps, idx, z);
+        write_nn_to_file(f_nn, maps, idx, z, feature_scaling_func);
+        fclose(f);
+        fclose(f_nn);
+      }
+    }
+
+    if (strcmp(maps[idx].name, "GEOPOTENTIAL") == 0) {
+      if (maps[idx].active) {
+        float *phb = maps[PHB].variable->val;
+        float *ph = maps[PH].variable->val;
+        float *geopotential = maps[GEOPOTENTIAL].variable->val;
+
+        uint nx = 0;
+        uint ny = 0;
+
+        get_horizontal_dims(COR_NORTH, &nx, &ny);
+
+        for (int y = 0; y < ny; y++) {
+          for (int x = 0; x < nx; x++) {
+            float val = phb[(z*(ny*nx))+((y*nx)+x)] + ph[(z*(ny*nx))+((y*nx)+x)];
+            geopotential[(z*(ny*nx))+((y*nx)+x)] = val;
+          }
+        }
+
+        write_visual_to_file(f, maps, idx, z);
+        write_nn_to_file(f_nn, maps, idx, z, feature_scaling_func);
+        fclose(f);
+        fclose(f_nn);
+      }
+    }
   } // End z loop
   double i_elaps = cpu_second() - i_start;
   fprintf(stdout, ">>>>>>>>>>>> elapsed (%d layers): %f sec.\n",  num_layers, i_elaps);
@@ -1368,24 +1739,25 @@ int process(char files[][MAX_STRING_LENGTH], uint num_files, bool no_interpol_ou
 
     shape[0] = NT; shape[1] = NZ; shape[2] = NY; shape[3] = NX;
     rank = 4;
-    cldfra    = allocate_tensor(shape, rank);
-    p         = allocate_tensor(shape, rank);
-    pb        = allocate_tensor(shape, rank);
-    phyd      = allocate_tensor(shape, rank);
-    qcloud    = allocate_tensor(shape, rank);
-    qgraup    = allocate_tensor(shape, rank);
-    qice      = allocate_tensor(shape, rank);
-    qngraupel = allocate_tensor(shape, rank);
-    qnice     = allocate_tensor(shape, rank);
-    qnrain    = allocate_tensor(shape, rank);
-    qnsnow    = allocate_tensor(shape, rank);
-    qrain     = allocate_tensor(shape, rank);
-    qsnow     = allocate_tensor(shape, rank);
-    qvapor    = allocate_tensor(shape, rank);
-    t         = allocate_tensor(shape, rank);
-    pressure  = allocate_tensor(shape, rank);
-    cor_east  = allocate_tensor(shape, rank);
-    cor_north = allocate_tensor(shape, rank);
+    cldfra       = allocate_tensor(shape, rank);
+    p            = allocate_tensor(shape, rank);
+    pb           = allocate_tensor(shape, rank);
+    phyd         = allocate_tensor(shape, rank);
+    qcloud       = allocate_tensor(shape, rank);
+    qgraup       = allocate_tensor(shape, rank);
+    qice         = allocate_tensor(shape, rank);
+    qngraupel    = allocate_tensor(shape, rank);
+    qnice        = allocate_tensor(shape, rank);
+    qnrain       = allocate_tensor(shape, rank);
+    qnsnow       = allocate_tensor(shape, rank);
+    qrain        = allocate_tensor(shape, rank);
+    qsnow        = allocate_tensor(shape, rank);
+    qvapor       = allocate_tensor(shape, rank);
+    t            = allocate_tensor(shape, rank);
+    pressure     = allocate_tensor(shape, rank);
+    cor_east     = allocate_tensor(shape, rank);
+    cor_north    = allocate_tensor(shape, rank);
+    geopotential = allocate_tensor(shape, rank);
 
     shape[1] = NZ_STAG;
     ph    = allocate_tensor(shape, rank);
@@ -1408,20 +1780,18 @@ int process(char files[][MAX_STRING_LENGTH], uint num_files, bool no_interpol_ou
     if (check_maps(maps) != 0) {
       exit(EXIT_FAILURE);
     }
-    set_maps_hiden_flag(maps);
+    set_maps_active(maps);
+    check_depedencies(maps);
 
     // Load the variables into memory
-    bool is_pressure = false;
-    bool is_dry_mass = false;
     for (int i = 0; i < NUM_VARIABLES; i++) {
-      if ((retval = load_variable(ncid, maps[i].name, maps[i].variable, &is_pressure, &is_cor_east, &is_cor_north,
-                                  &is_dry_mass))) {
+      if ((retval = load_variable(ncid, maps[i].name, maps[i].variable))) {
           ERR(retval);
         }
     }
 
     // If required, compute the full pressure here
-    if (is_pressure) {
+    {
       float *p = maps[P].variable->val;
       float *pb = maps[PB].variable->val;
       float *pressure = maps[PRESSURE].variable->val;
@@ -1444,7 +1814,7 @@ int process(char files[][MAX_STRING_LENGTH], uint num_files, bool no_interpol_ou
     }
 
     // If required, compute the full dry air mass here
-    if (is_dry_mass) {
+    {
       float *dry_mass = maps[DRY_MASS].variable->val;
       float *mu = maps[MU].variable->val;
       float *mub = maps[MUB].variable->val;
@@ -1466,26 +1836,38 @@ int process(char files[][MAX_STRING_LENGTH], uint num_files, bool no_interpol_ou
     if (grid_type == STRUCTURED) {
       // The storage for the neighbors in the x-wind and y-wind grids
       h_velo_u_grid = (velo_grid *)malloc(sizeof(velo_grid));
-      h_velo_u_grid->x = (float *)malloc((NY*NX*NUM_SUPPORTING_POINTS)*sizeof(float));
-      h_velo_u_grid->y = (float *)malloc((NY*NX*NUM_SUPPORTING_POINTS)*sizeof(float));
-      h_velo_u_grid->val = (float *)malloc((NY*NX*NUM_SUPPORTING_POINTS)*sizeof(float));
+      h_velo_u_grid->x = (float *)malloc((NY*NX*NUM_SUPPORTING_POINTS_HORIZ)*sizeof(float));
+      h_velo_u_grid->y = (float *)malloc((NY*NX*NUM_SUPPORTING_POINTS_HORIZ)*sizeof(float));
+      h_velo_u_grid->val = (float *)malloc((NY*NX*NUM_SUPPORTING_POINTS_HORIZ)*sizeof(float));
 
       h_velo_v_grid = (velo_grid *)malloc(sizeof(velo_grid));
-      h_velo_v_grid->x = (float *)malloc((NY*NX*NUM_SUPPORTING_POINTS)*sizeof(float));
-      h_velo_v_grid->y = (float *)malloc((NY*NX*NUM_SUPPORTING_POINTS)*sizeof(float));
-      h_velo_v_grid->val = (float *)malloc((NY*NX*NUM_SUPPORTING_POINTS)*sizeof(float));
+      h_velo_v_grid->x = (float *)malloc((NY*NX*NUM_SUPPORTING_POINTS_HORIZ)*sizeof(float));
+      h_velo_v_grid->y = (float *)malloc((NY*NX*NUM_SUPPORTING_POINTS_HORIZ)*sizeof(float));
+      h_velo_v_grid->val = (float *)malloc((NY*NX*NUM_SUPPORTING_POINTS_HORIZ)*sizeof(float));
 
-      // Get the neighbors coordinates of the mass points
+      // The storage for the neighbors in the z-wind grid
+      h_velo_w_grid = (velo_grid *)malloc(sizeof(velo_grid));
+      h_velo_w_grid->val = (float *)malloc((NY*NX*NUM_SUPPORTING_POINTS_VERT)*sizeof(float));
+
+      // The storage for the neighbors in the base geopotential grid
+      h_base_geopot_grid = (velo_grid *)malloc(sizeof(velo_grid));
+      h_base_geopot_grid->val = (float *)malloc((NY*NX*NUM_SUPPORTING_POINTS_VERT)*sizeof(float));
+
+      // The storage for the neighbors in the perturbation geopotential grids
+      h_pert_geopot_grid = (velo_grid *)malloc(sizeof(velo_grid));
+      h_pert_geopot_grid->val = (float *)malloc((NY*NX*NUM_SUPPORTING_POINTS_VERT)*sizeof(float));
+
       double nc = cpu_second();
-      get_neighbors_coordinates(h_velo_u_grid, h_velo_v_grid, maps, NY_STAG, NX_STAG, NY, NX,
-        NUM_SUPPORTING_POINTS);
-        fprintf(stdout, "Time to get neighbors coordinates: %f sec.\n", cpu_second() - nc);
-  }
+      // Get the neighbors coordinates of the mass points (horizontal)
+      get_neighbors_coordinates_horiz(h_velo_u_grid, h_velo_v_grid, maps, NY_STAG, NX_STAG, NY, NX,
+        NUM_SUPPORTING_POINTS_HORIZ);
+        fprintf(stdout, "Time to get neighbors coordinates in horizontal: %f sec.\n", cpu_second() - nc);
+      }
 
 #ifdef __NVCC__
 
+    // The x-wind component memory allocs
     if (grid_type == UNSTRUCTURED) {
-      // The x-wind component grid
       h_velo_u_grid = (velo_grid *)malloc(sizeof(velo_grid));
       h_velo_u_grid->x = (float *)malloc((NY*NX_STAG)*sizeof(float));
       h_velo_u_grid->y = (float *)malloc((NY*NX_STAG)*sizeof(float));
@@ -1495,7 +1877,7 @@ int process(char files[][MAX_STRING_LENGTH], uint num_files, bool no_interpol_ou
       memcpy(h_velo_u_grid->y, xlat_u->val, (NY*NX_STAG)*sizeof(float));
       memcpy(h_velo_u_grid->val, u->val, (NZ*NY*NX_STAG)*sizeof(float));
    } else {
-      memset(h_velo_u_grid->val, 0.0f, (NY*NX*NUM_SUPPORTING_POINTS)*sizeof(float));
+      memset(h_velo_u_grid->val, 0.0f, (NY*NX*NUM_SUPPORTING_POINTS_HORIZ)*sizeof(float));
     }
 
     if(cudaMalloc((velo_grid**)&d_velo_u_grid, sizeof(velo_grid)) != cudaSuccess) {
@@ -1507,36 +1889,39 @@ int process(char files[][MAX_STRING_LENGTH], uint num_files, bool no_interpol_ou
         fprintf(stderr, "Memory copy <u grid> failure to device.\n");
         exit(EXIT_FAILURE);
     }
+
     {
       float *x[1];
       if (grid_type == STRUCTURED) {
-        cudaMalloc(&(x[0]), (NY*NX*NUM_SUPPORTING_POINTS)*sizeof(float));
+        cudaMalloc(&(x[0]), (NY*NX*NUM_SUPPORTING_POINTS_HORIZ)*sizeof(float));
         cudaMemcpy(&(d_velo_u_grid[0].x), &(x[0]), sizeof(float *), cudaMemcpyHostToDevice);
-        cudaMemcpy(x[0], h_velo_u_grid->x, (NY*NX*NUM_SUPPORTING_POINTS)*sizeof(float), cudaMemcpyHostToDevice);
+        cudaMemcpy(x[0], h_velo_u_grid->x, (NY*NX*NUM_SUPPORTING_POINTS_HORIZ)*sizeof(float), cudaMemcpyHostToDevice);
       } else {
         cudaMalloc(&(x[0]), (NY*NX_STAG)*sizeof(float));
         cudaMemcpy(&(d_velo_u_grid[0].x), &(x[0]), sizeof(float *), cudaMemcpyHostToDevice);
         cudaMemcpy(x[0], xlong_u->val, (NY*NX_STAG)*sizeof(float), cudaMemcpyHostToDevice);
       }
     }
+
     {
       float *y[1];
       if (grid_type == STRUCTURED) {
-        cudaMalloc(&(y[0]), (NY*NX*NUM_SUPPORTING_POINTS)*sizeof(float));
+        cudaMalloc(&(y[0]), (NY*NX*NUM_SUPPORTING_POINTS_HORIZ)*sizeof(float));
         cudaMemcpy(&(d_velo_u_grid[0].y), &(y[0]), sizeof(float *), cudaMemcpyHostToDevice);
-        cudaMemcpy(y[0], h_velo_u_grid->y, (NY*NX*NUM_SUPPORTING_POINTS)*sizeof(float), cudaMemcpyHostToDevice);
+        cudaMemcpy(y[0], h_velo_u_grid->y, (NY*NX*NUM_SUPPORTING_POINTS_HORIZ)*sizeof(float), cudaMemcpyHostToDevice);
       } else {
         cudaMalloc(&(y[0]), (NY*NX_STAG)*sizeof(float));
         cudaMemcpy(&(d_velo_u_grid[0].y), &(y[0]), sizeof(float *), cudaMemcpyHostToDevice);
         cudaMemcpy(y[0], xlat_u->val, (NY*NX_STAG)*sizeof(float), cudaMemcpyHostToDevice);
       }
     }
+
     {
       float *v[1];
       if (grid_type == STRUCTURED) {
-        cudaMalloc(&(v[0]), (NY*NX*NUM_SUPPORTING_POINTS)*sizeof(float));
+        cudaMalloc(&(v[0]), (NY*NX*NUM_SUPPORTING_POINTS_HORIZ)*sizeof(float));
         cudaMemcpy(&(d_velo_u_grid[0].val), &(v[0]), sizeof(float *), cudaMemcpyHostToDevice);
-        cudaMemset(v[0], 0.0f, (NY*NX*NUM_SUPPORTING_POINTS)*sizeof(float));
+        cudaMemset(v[0], 0.0f, (NY*NX*NUM_SUPPORTING_POINTS_HORIZ)*sizeof(float));
       } else {
         cudaMalloc(&(v[0]), (NZ*NY*NX_STAG)*sizeof(float));
         cudaMemcpy(&(d_velo_u_grid[0].val), &(v[0]), sizeof(float *), cudaMemcpyHostToDevice);
@@ -1544,7 +1929,7 @@ int process(char files[][MAX_STRING_LENGTH], uint num_files, bool no_interpol_ou
       }
     }
 
-    // The y-wind component grid
+    // The y-wind component memory allocs
     if (grid_type == UNSTRUCTURED) {
       h_velo_v_grid = (velo_grid *)malloc(sizeof(velo_grid));
       h_velo_v_grid->x = (float *)malloc((NY_STAG*NX)*sizeof(float));
@@ -1555,7 +1940,7 @@ int process(char files[][MAX_STRING_LENGTH], uint num_files, bool no_interpol_ou
       memcpy(h_velo_v_grid->y, xlat_v->val, (NY_STAG*NX)*sizeof(float));
       memcpy(h_velo_v_grid->val, v->val, (NZ*NY_STAG*NX)*sizeof(float));
     } else {
-      memset(h_velo_v_grid->val, 0.0f, (NY*NX*NUM_SUPPORTING_POINTS)*sizeof(float));
+      memset(h_velo_v_grid->val, 0.0f, (NY*NX*NUM_SUPPORTING_POINTS_HORIZ)*sizeof(float));
     }
 
     if(cudaMalloc((velo_grid**)&d_velo_v_grid, sizeof(velo_grid)) != cudaSuccess) {
@@ -1567,36 +1952,39 @@ int process(char files[][MAX_STRING_LENGTH], uint num_files, bool no_interpol_ou
         fprintf(stderr, "Memory copy <v grid> failure to device.\n");
         exit(EXIT_FAILURE);
     }
+
     {
       float *x[1];
       if (grid_type == STRUCTURED) {
-        cudaMalloc(&(x[0]), (NY*NX*NUM_SUPPORTING_POINTS)*sizeof(float));
+        cudaMalloc(&(x[0]), (NY*NX*NUM_SUPPORTING_POINTS_HORIZ)*sizeof(float));
         cudaMemcpy(&(d_velo_v_grid[0].x), &(x[0]), sizeof(float *), cudaMemcpyHostToDevice);
-        cudaMemcpy(x[0], h_velo_v_grid->x, (NY*NX*NUM_SUPPORTING_POINTS)*sizeof(float), cudaMemcpyHostToDevice);
+        cudaMemcpy(x[0], h_velo_v_grid->x, (NY*NX*NUM_SUPPORTING_POINTS_HORIZ)*sizeof(float), cudaMemcpyHostToDevice);
       } else {
         cudaMalloc(&(x[0]), (NY_STAG*NX)*sizeof(float));
         cudaMemcpy(&(d_velo_v_grid[0].x), &(x[0]), sizeof(float *), cudaMemcpyHostToDevice);
         cudaMemcpy(x[0], xlong_v->val, (NY_STAG*NX)*sizeof(float), cudaMemcpyHostToDevice);
       }
     }
+
     {
       float *y[1];
       if (grid_type == STRUCTURED) {
-        cudaMalloc(&(y[0]), (NY*NX*NUM_SUPPORTING_POINTS)*sizeof(float));
+        cudaMalloc(&(y[0]), (NY*NX*NUM_SUPPORTING_POINTS_HORIZ)*sizeof(float));
         cudaMemcpy(&(d_velo_v_grid[0].y), &(y[0]), sizeof(float *), cudaMemcpyHostToDevice);
-        cudaMemcpy(y[0], h_velo_v_grid->y, (NY*NX*NUM_SUPPORTING_POINTS)*sizeof(float), cudaMemcpyHostToDevice);
+        cudaMemcpy(y[0], h_velo_v_grid->y, (NY*NX*NUM_SUPPORTING_POINTS_HORIZ)*sizeof(float), cudaMemcpyHostToDevice);
       } else {
         cudaMalloc(&(y[0]), (NY_STAG*NX)*sizeof(float));
         cudaMemcpy(&(d_velo_v_grid[0].y), &(y[0]), sizeof(float *), cudaMemcpyHostToDevice);
         cudaMemcpy(y[0], xlat_v->val, (NY_STAG*NX)*sizeof(float), cudaMemcpyHostToDevice);
       }
     }
+
     {
       float *vv[1];
       if (grid_type == STRUCTURED) {
-        cudaMalloc(&(vv[0]), (NY*NX*NUM_SUPPORTING_POINTS)*sizeof(float));
+        cudaMalloc(&(vv[0]), (NY*NX*NUM_SUPPORTING_POINTS_HORIZ)*sizeof(float));
         cudaMemcpy(&(d_velo_v_grid[0].val), &(vv[0]), sizeof(float *), cudaMemcpyHostToDevice);
-        cudaMemset(vv[0], 0.0f, (NY*NX*NUM_SUPPORTING_POINTS)*sizeof(float));
+        cudaMemset(vv[0], 0.0f, (NY*NX*NUM_SUPPORTING_POINTS_HORIZ)*sizeof(float));
       } else {
         cudaMalloc(&(vv[0]), (NZ*NY_STAG*NX)*sizeof(float));
         cudaMemcpy(&(d_velo_v_grid[0].val), &(vv[0]), sizeof(float *), cudaMemcpyHostToDevice);
@@ -1604,17 +1992,107 @@ int process(char files[][MAX_STRING_LENGTH], uint num_files, bool no_interpol_ou
       }
     }
 
-    // The mass grid
+    // The z-wind component memory allocs
+    if (grid_type == UNSTRUCTURED) {
+      fprintf(stdout, "Currently interpolation in a three dimensional unstructured grid is not fully implemented.\n");
+   } else {
+      memset(h_velo_w_grid->val, 0.0f, (NY*NX*NUM_SUPPORTING_POINTS_VERT)*sizeof(float));
+    }
+
+    if(cudaMalloc((velo_grid**)&d_velo_w_grid, sizeof(velo_grid)) != cudaSuccess) {
+        fprintf(stderr, "Memory allocattion failure for z-wind grid on device.\n");
+        exit(EXIT_FAILURE);
+    }
+
+    if(cudaMemcpy(d_velo_w_grid, h_velo_w_grid, sizeof(velo_grid), cudaMemcpyHostToDevice) != cudaSuccess) {
+        fprintf(stderr, "Memory copy <w grid> failure to device.\n");
+        exit(EXIT_FAILURE);
+    }
+
+    {
+      float *v[1];
+      if (grid_type == STRUCTURED) {
+        cudaMalloc(&(v[0]), (NY*NX*NUM_SUPPORTING_POINTS_VERT)*sizeof(float));
+        cudaMemcpy(&(d_velo_w_grid[0].val), &(v[0]), sizeof(float *), cudaMemcpyHostToDevice);
+        cudaMemset(v[0], 0.0f, (NY*NX*NUM_SUPPORTING_POINTS_VERT)*sizeof(float));
+      } else {
+        fprintf(stdout, "Currently interpolation in a three dimensional unstructured grid is not fully implemented yet.\n");
+      }
+    }
+
+    // The base geopotential component memory allocs
+    if (grid_type == UNSTRUCTURED) {
+      fprintf(stdout, "Currently interpolation in a three dimensional unstructured grid is not fully implemented.\n");
+    } else {
+      memset(h_base_geopot_grid->val, 0.0f, (NY*NX*NUM_SUPPORTING_POINTS_VERT)*sizeof(float));
+    }
+
+    if(cudaMalloc((velo_grid**)&d_base_geopot_grid, sizeof(velo_grid)) != cudaSuccess) {
+        fprintf(stderr, "Memory allocattion failure for base geopotential grid on device.\n");
+        exit(EXIT_FAILURE);
+    }
+
+    if(cudaMemcpy(d_base_geopot_grid, h_base_geopot_grid, sizeof(velo_grid), cudaMemcpyHostToDevice) != cudaSuccess) {
+        fprintf(stderr, "Memory copy <base geopotential grid> failure to device.\n");
+        exit(EXIT_FAILURE);
+    }
+
+    {
+      float *v[1];
+      if (grid_type == STRUCTURED) {
+        cudaMalloc(&(v[0]), (NY*NX*NUM_SUPPORTING_POINTS_VERT)*sizeof(float));
+        cudaMemcpy(&(d_base_geopot_grid[0].val), &(v[0]), sizeof(float *), cudaMemcpyHostToDevice);
+        cudaMemset(v[0], 0.0f, (NY*NX*NUM_SUPPORTING_POINTS_VERT)*sizeof(float));
+      } else {
+        fprintf(stdout, "Currently interpolation in a three dimensional unstructured grid is not fully implemented yet.\n");
+      }
+    }
+
+    // The perturbation geopotential component memory allocs
+    if (grid_type == UNSTRUCTURED) {
+      fprintf(stdout, "Currently interpolation in a three dimensional unstructured grid is not fully implemented.\n");
+    } else {
+      memset(h_pert_geopot_grid->val, 0.0f, (NY*NX*NUM_SUPPORTING_POINTS_VERT)*sizeof(float));
+    }
+
+    if(cudaMalloc((velo_grid**)&d_pert_geopot_grid, sizeof(velo_grid)) != cudaSuccess) {
+        fprintf(stderr, "Memory allocattion failure for base geopotential grid on device.\n");
+        exit(EXIT_FAILURE);
+    }
+
+    if(cudaMemcpy(d_pert_geopot_grid, h_pert_geopot_grid, sizeof(velo_grid), cudaMemcpyHostToDevice) != cudaSuccess) {
+        fprintf(stderr, "Memory copy <base geopotential grid> failure to device.\n");
+        exit(EXIT_FAILURE);
+    }
+
+    {
+      float *v[1];
+      if (grid_type == STRUCTURED) {
+        cudaMalloc(&(v[0]), (NY*NX*NUM_SUPPORTING_POINTS_VERT)*sizeof(float));
+        cudaMemcpy(&(d_pert_geopot_grid[0].val), &(v[0]), sizeof(float *), cudaMemcpyHostToDevice);
+        cudaMemset(v[0], 0.0f, (NY*NX*NUM_SUPPORTING_POINTS_VERT)*sizeof(float));
+      } else {
+        fprintf(stdout, "Currently interpolation in a three dimensional unstructured grid is not fully implemented yet.\n");
+      }
+    }
+
+    // The mass grid memory allocs
     h_mass_grid = (mass_grid *)malloc(sizeof(mass_grid));
     h_mass_grid->x = (float *)malloc((NY*NX)*sizeof(float));
     h_mass_grid->y = (float *)malloc((NY*NX)*sizeof(float));
     h_mass_grid->u = (float *)malloc((NY*NX)*sizeof(float));
     h_mass_grid->v = (float *)malloc((NY*NX)*sizeof(float));
+    h_mass_grid->w = (float *)malloc((NY*NX)*sizeof(float));
+    h_mass_grid->ph = (float *)malloc((NY*NX)*sizeof(float));
+    h_mass_grid->phb = (float *)malloc((NY*NX)*sizeof(float));
 
     memcpy(h_mass_grid->x, xlong->val, (NY*NX)*sizeof(float));
     memcpy(h_mass_grid->y, xlat->val, (NY*NX)*sizeof(float));
     memset(h_mass_grid->u, 0.0f, (NY*NX)*sizeof(float));
     memset(h_mass_grid->v, 0.0f, (NY*NX)*sizeof(float));
+    memset(h_mass_grid->w, 0.0f, (NY*NX)*sizeof(float));
+    memset(h_mass_grid->ph, 0.0f, (NY*NX)*sizeof(float));
+    memset(h_mass_grid->phb, 0.0f, (NY*NX)*sizeof(float));
 
     if (cudaMalloc((mass_grid**)&d_mass_grid, sizeof(mass_grid)) != cudaSuccess) {
         fprintf(stderr, "Memory allocation failure for mass grid on device.\n");
@@ -1649,6 +2127,13 @@ int process(char files[][MAX_STRING_LENGTH], uint num_files, bool no_interpol_ou
       cudaMemcpy(&(d_mass_grid[0].v), &(v[0]), sizeof(float *), cudaMemcpyHostToDevice);
       cudaMemset(v[0], 0.0f, (NY*NX)*sizeof(float));
     }
+    {
+      float *w[1];
+      cudaMalloc(&(w[0]), (NY*NX)*sizeof(float));
+      cudaMemcpy(&(d_mass_grid[0].w), &(w[0]), sizeof(float *), cudaMemcpyHostToDevice);
+      cudaMemset(w[0], 0.0f, (NY*NX)*sizeof(float));
+    }
+
 #endif
 
     double i_start = cpu_second();
@@ -1660,7 +2145,7 @@ int process(char files[][MAX_STRING_LENGTH], uint num_files, bool no_interpol_ou
 
     // Close the file, freeing all ressources
     if ((retval = nc_close(ncid)))
-      ERR(retval);
+         ERR(retval);
 
     deallocate_tensor(znu);
     deallocate_tensor(znw);
@@ -1702,6 +2187,7 @@ int process(char files[][MAX_STRING_LENGTH], uint num_files, bool no_interpol_ou
     deallocate_tensor(pressure);
     deallocate_tensor(cor_east);
     deallocate_tensor(cor_north);
+    deallocate_tensor(geopotential);
 
     if (grid_type == STRUCTURED) {
       free(h_velo_u_grid->x);
@@ -1713,6 +2199,15 @@ int process(char files[][MAX_STRING_LENGTH], uint num_files, bool no_interpol_ou
       free(h_velo_v_grid->y);
       free(h_velo_v_grid->val);
       free(h_velo_v_grid);
+
+      free(h_velo_w_grid->val);
+      free(h_velo_w_grid);
+
+      free(h_base_geopot_grid->val);
+      free(h_base_geopot_grid);
+
+      free(h_pert_geopot_grid->val);
+      free(h_pert_geopot_grid);
     }
 
 #ifdef __NVCC__
@@ -1726,12 +2221,24 @@ int process(char files[][MAX_STRING_LENGTH], uint num_files, bool no_interpol_ou
       free(h_velo_v_grid->y);
       free(h_velo_v_grid->val);
       free(h_velo_v_grid);
+
+      free(h_velo_w_grid->val);
+      free(h_velo_w_grid);
+
+      free(h_base_geopot_grid->val);
+      free(h_base_geopot_grid);
+
+      free(h_pert_geopot_grid->val);
+      free(h_pert_geopot_grid);
     }
 
     free(h_mass_grid->x);
     free(h_mass_grid->y);
     free(h_mass_grid->u);
     free(h_mass_grid->v);
+    free(h_mass_grid->w);
+    free(h_mass_grid->ph);
+    free(h_mass_grid->phb);
     free(h_mass_grid);
 
     {
@@ -1762,11 +2269,32 @@ int process(char files[][MAX_STRING_LENGTH], uint num_files, bool no_interpol_ou
       cudaFree(y[0]);
     }
     {
-      float *vv[1];
-      cudaMemcpy(&(vv[0]), &(d_velo_v_grid[0].val), sizeof(float *), cudaMemcpyDeviceToHost);
-      cudaFree(vv[0]);
+      float *v[1];
+      cudaMemcpy(&(v[0]), &(d_velo_v_grid[0].val), sizeof(float *), cudaMemcpyDeviceToHost);
+      cudaFree(v[0]);
     }
     cudaFree(d_velo_v_grid);
+
+    {
+      float *v[1];
+      cudaMemcpy(&(v[0]), &(d_velo_w_grid[0].val), sizeof(float *), cudaMemcpyDeviceToHost);
+      cudaFree(v[0]);
+    }
+    cudaFree(d_velo_w_grid);
+
+    {
+      float *v[1];
+      cudaMemcpy(&(v[0]), &(d_base_geopot_grid[0].val), sizeof(float *), cudaMemcpyDeviceToHost);
+      cudaFree(v[0]);
+    }
+    cudaFree(d_base_geopot_grid);
+
+    {
+      float *v[1];
+      cudaMemcpy(&(v[0]), &(d_pert_geopot_grid[0].val), sizeof(float *), cudaMemcpyDeviceToHost);
+      cudaFree(v[0]);
+    }
+    cudaFree(d_pert_geopot_grid);
 
     {
       float *x[1];
@@ -1787,6 +2315,11 @@ int process(char files[][MAX_STRING_LENGTH], uint num_files, bool no_interpol_ou
       float *v[1];
       cudaMemcpy(&(v[0]), &(d_mass_grid[0].v), sizeof(float *), cudaMemcpyDeviceToHost);
       cudaFree(v[0]);
+    }
+    {
+      float *w[1];
+      cudaMemcpy(&(w[0]), &(d_mass_grid[0].w), sizeof(float *), cudaMemcpyDeviceToHost);
+      cudaFree(w[0]);
     }
     cudaFree(d_mass_grid);
 #endif

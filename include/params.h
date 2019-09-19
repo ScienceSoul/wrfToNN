@@ -10,8 +10,13 @@
 // Stack size
 #define STACK_SIZE 16 // MB
 
-// The number of supporting points for the interpolation
-#define NUM_SUPPORTING_POINTS 4
+// The number of supporting points for the interpolation in the
+// horizontal plane
+#define NUM_SUPPORTING_POINTS_HORIZ 4
+
+// The number of supporting points for tehe interpolation in the
+// vertical plane
+#define NUM_SUPPORTING_POINTS_VERT 2
 
 #define DEF_BLOCK_SIZE 128
 
@@ -73,36 +78,37 @@ typedef enum variables_code {
 
     // 3D variables
     // ----------------------------------
-    CLDFRA,    // Cloud fraction
-    P,         // Perturbation pressure
-    PB,        // Base state pressure
-    PH,        // Perturbation geopotential
-    PHB,       // Base-state geopotential
-    P_HYD,     // hydrostatic presure
-    QCLOUD,    // Cloud water mixing fraction
-    QGRAUP,    // Graupel mixing ratio
-    QICE,      // Ice mixing ratio
-    QNGRAUPEL, // Graupel number concentration
-    QNICE,     // Ice number concentration
-    QNRAIN,    // Rain number concentration
-    QNSNOW,    // Snow number concentration
-    QRAIN,     // Rain water mixing ratio
-    QSNOW,     // Snow mixing ratio
-    QVAPOR,    // Water vapor mixing ratio
-    SH2O,      // Soil liquid water
-    SMCREL,    // Relative soil moisture
-    SMOIS,     // Soil moisture
-    T,         // Perturbation potential temperature (theta-t0)
-    TSLB,      // Soil temperature
-    U,         // x-wind component
-    V,         // y-wind component
-    W,         // z-wind component
-    PRESSURE,  // The full pressure = P + PB
-    COR_EAST,  // Coriolis force directed due East
-    COR_NORTH  // Coriolis force directed due North
+    CLDFRA,      // Cloud fraction
+    P,           // Perturbation pressure
+    PB,          // Base state pressure
+    PH,          // Perturbation geopotential
+    PHB,         // Base-state geopotential
+    P_HYD,       // hydrostatic presure
+    QCLOUD,      // Cloud water mixing fraction
+    QGRAUP,      // Graupel mixing ratio
+    QICE,        // Ice mixing ratio
+    QNGRAUPEL,   // Graupel number concentration
+    QNICE,       // Ice number concentration
+    QNRAIN,      // Rain number concentration
+    QNSNOW,      // Snow number concentration
+    QRAIN,       // Rain water mixing ratio
+    QSNOW,       // Snow mixing ratio
+    QVAPOR,      // Water vapor mixing ratio
+    SH2O,        // Soil liquid water
+    SMCREL,      // Relative soil moisture
+    SMOIS,       // Soil moisture
+    T,           // Perturbation potential temperature (theta-t0)
+    TSLB,        // Soil temperature
+    U,           // x-wind component
+    V,           // y-wind component
+    W,           // z-wind component
+    PRESSURE,    // The full pressure = P + PB
+    COR_EAST,    // Coriolis force directed due East
+    COR_NORTH,   // Coriolis force directed due North
+    GEOPOTENTIAL // The full geopotential = PH + PHB
 } variables_code;
 
-#define DEF_NUM_VARIABLES 40;
+#define DEF_NUM_VARIABLES 41;
 
 const char *active_flags[] = {"ZNU:1",
                               "ZNW:1",
@@ -120,8 +126,8 @@ const char *active_flags[] = {"ZNU:1",
                               "CLDFRA:0",
                               "P:1",
                               "PB:1",
-                              "PH:0",
-                              "PHB:0",
+                              "PH:1",
+                              "PHB:1",
                               "P_HYD:1",
                               "QCLOUD:0",
                               "QGRAUP:0",
@@ -140,9 +146,10 @@ const char *active_flags[] = {"ZNU:1",
                               "TSLB:0",
                               "U:1",
                               "V:1",
-                              "W:0",
+                              "W:1",
                               "PRESSURE:1",
                               "COR_EAST:1",
-                              "COR_NORTH:1"};
+                              "COR_NORTH:1",
+                              "GEOPOTENTIAL:1"};
 
 #endif
