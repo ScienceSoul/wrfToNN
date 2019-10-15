@@ -78,6 +78,7 @@ tensor *pressure     = NULL;
 tensor *cor_east     = NULL;
 tensor *cor_north    = NULL;
 tensor *geopotential = NULL;
+tensor *cor_param    = NULL;
 // ------------------------------------------------------
 
 // ------------------------------------------------------
@@ -401,6 +402,13 @@ void set_maps(map *maps) {
         maps[i].longi = xlong;
         maps[i].lat = xlat;
         break;
+      case COR_PARAM:
+        maps[i].name = "COR_PARAM";
+        maps[i].out_name = "COR_PARAM";
+        maps[i].variable = cor_param;
+        maps[i].longi = xlong;
+        maps[i].lat = xlat;
+        break;
     }
   }
 }
@@ -512,6 +520,9 @@ int load_variable(int ncid, const char *var_name, tensor * t) {
     return retval;
   }
   if (strcmp(var_name, "GEOPOTENTIAL") == 0) {
+    return retval;
+  }
+  if (strcmp(var_name, "COR_PARAM") == 0) {
     return retval;
   }
 
@@ -1477,11 +1488,12 @@ int write_data(map *maps, int idx, char *run, bool no_interpol_out, int grid_typ
         write_visual_to_file(f, maps, idx, z);
       }
     } else {
-      // Note:  write if needed the coriolis force later
+      // Note: too early, some variables are written later!
       if (strcmp(maps[idx].name, "ZNU") != 0 && strcmp(maps[idx].name, "ZNW") != 0 &&
           strcmp(maps[idx].name, "COR_EAST") != 0 && strcmp(maps[idx].name, "COR_NORTH") != 0 &&
           strcmp(maps[idx].name, "W") != 0 && strcmp(maps[idx].name, "PHB") != 0 &&
-          strcmp(maps[idx].name, "PH") != 0 && strcmp(maps[idx].name, "GEOPOTENTIAL") != 0) {
+          strcmp(maps[idx].name, "PH") != 0 && strcmp(maps[idx].name, "GEOPOTENTIAL") != 0 &&
+          strcmp(maps[idx].name, "COR_PARAM") != 0) {
             write_visual_to_file(f, maps, idx, z);
       }
     }
@@ -1493,11 +1505,12 @@ int write_data(map *maps, int idx, char *run, bool no_interpol_out, int grid_typ
 #endif
 
     // Write the scaled values for NN, here only the non-interpolated variable
-    // Note:  write if needed the scaled coriolis force later
+    // Note: too early, some variables are written later!
     if (strcmp(maps[idx].name, "U") != 0 && strcmp(maps[idx].name, "V") != 0 &&
         strcmp(maps[idx].name, "COR_EAST") != 0 && strcmp(maps[idx].name, "COR_NORTH") != 0 &&
         strcmp(maps[idx].name, "W") != 0 && strcmp(maps[idx].name, "PHB") != 0 &&
-        strcmp(maps[idx].name, "PH") != 0 && strcmp(maps[idx].name, "GEOPOTENTIAL") != 0) {
+        strcmp(maps[idx].name, "PH") != 0 && strcmp(maps[idx].name, "GEOPOTENTIAL") != 0 &&
+        strcmp(maps[idx].name, "COR_PARAM") != 0) {
           write_nn_to_file(f_nn, maps, idx, z, feature_scaling_func);
     }
 
@@ -1509,7 +1522,8 @@ int write_data(map *maps, int idx, char *run, bool no_interpol_out, int grid_typ
       if (strcmp(maps[idx].name, "ZNU") != 0 && strcmp(maps[idx].name, "ZNW") != 0 &&
           strcmp(maps[idx].name, "COR_EAST") != 0 && strcmp(maps[idx].name, "COR_NORTH") != 0 &&
           strcmp(maps[idx].name, "W") != 0 && strcmp(maps[idx].name, "PHB") != 0 &&
-          strcmp(maps[idx].name, "PH") != 0 && strcmp(maps[idx].name, "GEOPOTENTIAL") != 0) {
+          strcmp(maps[idx].name, "PH") != 0 && strcmp(maps[idx].name, "GEOPOTENTIAL") != 0 &&
+          strcmp(maps[idx].name, "COR_PARAM") != 0) {
             fclose(f);
       }
     }
@@ -1517,7 +1531,8 @@ int write_data(map *maps, int idx, char *run, bool no_interpol_out, int grid_typ
     if (strcmp(maps[idx].name, "U") != 0 && strcmp(maps[idx].name, "V") != 0 &&
         strcmp(maps[idx].name, "COR_EAST") != 0 && strcmp(maps[idx].name, "COR_NORTH") != 0 &&
         strcmp(maps[idx].name, "W") != 0 && strcmp(maps[idx].name, "PHB") != 0 &&
-        strcmp(maps[idx].name, "PH") != 0 && strcmp(maps[idx].name, "GEOPOTENTIAL") != 0) {
+        strcmp(maps[idx].name, "PH") != 0 && strcmp(maps[idx].name, "GEOPOTENTIAL") != 0 &&
+        strcmp(maps[idx].name, "COR_PARAM") != 0) {
           fclose(f_nn);
     }
 #ifdef __NVCC__
@@ -1628,6 +1643,32 @@ int write_data(map *maps, int idx, char *run, bool no_interpol_out, int grid_typ
             float rad_lat = lat[(y*nx)+x] * M_PI/180.0f;
             float val = -u_val * 2.0f * earth_angular_velocity * sinf(rad_lat);
             coriolis[(z*(ny*nx))+((y*nx)+x)] = val;
+          }
+        }
+
+        write_visual_to_file(f, maps, idx, z);
+        write_nn_to_file(f_nn, maps, idx, z, feature_scaling_func);
+        fclose(f);
+        fclose(f_nn);
+      }
+    }
+
+    if (strcmp(maps[idx].name, "COR_PARAM") == 0) {
+      if (maps[idx].active) {
+        float *lat = maps[XLAT].variable->val;
+        float *cor_param = maps[COR_PARAM].variable->val;
+
+        uint nx = 0;
+        uint ny = 0;
+
+        float earth_angular_velocity = 7.2921e-5; // rad/s
+
+        get_horizontal_dims(COR_PARAM, &nx, &ny);
+
+        for (int y = 0; y < ny; y++) {
+          for (int x = 0; x < nx; x++) {
+            float rad_lat = lat[(y*nx)+x] * M_PI/180.0f;
+            cor_param[(z*(ny*nx))+((y*nx)+x)] = 2.0f * earth_angular_velocity * sinf(rad_lat);
           }
         }
 
@@ -1758,6 +1799,7 @@ int process(char files[][MAX_STRING_LENGTH], uint num_files, bool no_interpol_ou
     cor_east     = allocate_tensor(shape, rank);
     cor_north    = allocate_tensor(shape, rank);
     geopotential = allocate_tensor(shape, rank);
+    cor_param    = allocate_tensor(shape, rank);
 
     shape[1] = NZ_STAG;
     ph    = allocate_tensor(shape, rank);
@@ -2188,6 +2230,7 @@ int process(char files[][MAX_STRING_LENGTH], uint num_files, bool no_interpol_ou
     deallocate_tensor(cor_east);
     deallocate_tensor(cor_north);
     deallocate_tensor(geopotential);
+    deallocate_tensor(cor_param);
 
     if (grid_type == STRUCTURED) {
       free(h_velo_u_grid->x);
