@@ -1024,6 +1024,10 @@ void interpolate_wind_velo_horiz(map *maps, int idx, int z, char file[][MAX_STRI
     float lat[NY*NX];
     float u_nn_val[NY*NX];
     float v_nn_val[NY*NX];
+    memset(longi, 0.0f, sizeof(longi));
+    memset(lat, 0.0f, sizeof(lat));
+    memset(u_nn_val, 0.0f, sizeof(u_nn_val));
+    memset(v_nn_val, 0.0f, sizeof(v_nn_val));
 
     staggered_var_scaling(u_nn_val, v_nn_val, NULL, longi, lat, NX, NY, maps, h_mass_grid, idx, true, true, false,
                      false, false, feature_scaling_func);
@@ -1266,6 +1270,9 @@ void interpolate_var_vert(velo_grid *h_var_grid, map *maps, int idx, int z, char
     float longi[NY*NX];
     float lat[NY*NX];
     float w_nn_val[NY*NX];
+    memset(longi, 0.0f, sizeof(longi));
+    memset(lat, 0.0f, sizeof(lat));
+    memset(w_nn_val, 0.0f, sizeof(w_nn_val));
 
     if (strcmp(maps[idx].name, "W") == 0) {
       staggered_var_scaling(NULL, NULL, w_nn_val, longi, lat, NX, NY, maps, h_mass_grid, idx, false, false, true,
