@@ -11,6 +11,7 @@
   #include "gpu.h"
 #endif
 #include "feature_scaling.h"
+#include "finite_difference.h"
 
 #define ERRCODE 2
 #define ERR(e) {printf("Error: %s\n", nc_strerror(e)); exit(ERRCODE);}
@@ -28,6 +29,9 @@ uint NZ_STAG      = DEF_NZ_STAG;
 uint NZ_SOIL_STAG = DEF_NZ_SOIL_STAG;
 uint NT           = DEF_NT;
 
+uint DX           = DEF_DX;
+uint DY           = DEF_DY;
+
 uint NUM_VARIABLES = DEF_NUM_VARIABLES;
 
 uint UNROLL_SIZE = DEF_UNROLL_SIZE;
@@ -37,52 +41,59 @@ uint BLOCK_SIZE = DEF_BLOCK_SIZE;
 // ------------------------------------------------------
 // The tensors
 // ------------------------------------------------------
-tensor *znu          = NULL;
-tensor *znw          = NULL;
-tensor *xlat         = NULL;
-tensor *xlong        = NULL;
-tensor *xlat_u       = NULL;
-tensor *xlong_u      = NULL;
-tensor *xlat_v       = NULL;
-tensor *xlong_v      = NULL;
-tensor *sst          = NULL;
-tensor *mu           = NULL;
-tensor *mub          = NULL;
-tensor *dry_mass     = NULL;
-tensor *olr          = NULL;
-tensor *cldfra       = NULL;
-tensor *p            = NULL;
-tensor *pb           = NULL;
-tensor *phyd         = NULL;
-tensor *qcloud       = NULL;
-tensor *qgraup       = NULL;
-tensor *qice         = NULL;
-tensor *qngraupel    = NULL;
-tensor *qnice        = NULL;
-tensor *qnrain       = NULL;
-tensor *qnsnow       = NULL;
-tensor *qrain        = NULL;
-tensor *qsnow        = NULL;
-tensor *qvapor       = NULL;
-tensor *t            = NULL;
-tensor *ph           = NULL;
-tensor *phb          = NULL;
-tensor *w            = NULL;
-tensor *sh2o         = NULL;
-tensor *smcrel       = NULL;
-tensor *smois        = NULL;
-tensor *tslb         = NULL;
-tensor *u            = NULL;
-tensor *v            = NULL;
-tensor *pressure     = NULL;
-tensor *cor_east     = NULL;
-tensor *cor_north    = NULL;
-tensor *geopotential = NULL;
-tensor *cor_param    = NULL;
+tensor *znu           = NULL;
+tensor *znw           = NULL;
+tensor *xlat          = NULL;
+tensor *xlong         = NULL;
+tensor *xlat_u        = NULL;
+tensor *xlong_u       = NULL;
+tensor *xlat_v        = NULL;
+tensor *xlong_v       = NULL;
+tensor *sst           = NULL;
+tensor *mu            = NULL;
+tensor *mub           = NULL;
+tensor *dry_mass      = NULL;
+tensor *olr           = NULL;
+tensor *cldfra        = NULL;
+tensor *p             = NULL;
+tensor *pb            = NULL;
+tensor *phyd          = NULL;
+tensor *qcloud        = NULL;
+tensor *qgraup        = NULL;
+tensor *qice          = NULL;
+tensor *qngraupel     = NULL;
+tensor *qnice         = NULL;
+tensor *qnrain        = NULL;
+tensor *qnsnow        = NULL;
+tensor *qrain         = NULL;
+tensor *qsnow         = NULL;
+tensor *qvapor        = NULL;
+tensor *t             = NULL;
+tensor *ph            = NULL;
+tensor *phb           = NULL;
+tensor *w             = NULL;
+tensor *sh2o          = NULL;
+tensor *smcrel        = NULL;
+tensor *smois         = NULL;
+tensor *tslb          = NULL;
+tensor *u             = NULL;
+tensor *v             = NULL;
+tensor *pressure      = NULL;
+tensor *cor_east      = NULL;
+tensor *cor_north     = NULL;
+tensor *geopotential  = NULL;
+tensor *cor_param     = NULL;
+tensor *abs_vert_vort = NULL;
 // ------------------------------------------------------
 
 // ------------------------------------------------------
-// Used for CUDA if available
+// The finite difference tags
+// ------------------------------------------------------
+fd_tags *domain_tags = NULL;
+// ------------------------------------------------------
+
+// ------------------------------------------------------
+// Used for CUDA when available
 // ------------------------------------------------------
 #ifdef __NVCC__
   velo_grid *h_velo_u_grid = NULL;
@@ -101,9 +112,12 @@ tensor *cor_param    = NULL;
 
   velo_grid *h_pert_geopot_grid = NULL;
   velo_grid *d_pert_geopot_grid = NULL;
-#endif
 
+  fd_container *h_vorticity = NULL;
+  fd_container *d_vorticity = NULL;
+#endif
 // ------------------------------------------------------
+
 // ----------------------------------
 // The variable->tensor mappings
 // ----------------------------------
@@ -409,6 +423,13 @@ void set_maps(map *maps) {
         maps[i].longi = xlong;
         maps[i].lat = xlat;
         break;
+      case ABS_VERT_VORT:
+        maps[i].name = "ABS_VERT_VORT";
+        maps[i].out_name = "ABS_VERT_VORT";
+        maps[i].variable = abs_vert_vort;
+        maps[i].longi = xlong;
+        maps[i].lat = xlat;
+        break;
     }
   }
 }
@@ -505,7 +526,8 @@ int load_variable(int ncid, const char *var_name, tensor * t) {
   int varid;
 
   // The special case of the full pressure, coriolis east and coriolus north,
-  // and the full dry mass
+  // the full dry mass, the geopotential, coriolis parameter and absolute
+  // vertival vorticity
   // Will be computed later after first loading the needed variable to do so
   if (strcmp(var_name, "PRESSURE") == 0) {
     return retval;
@@ -523,6 +545,9 @@ int load_variable(int ncid, const char *var_name, tensor * t) {
     return retval;
   }
   if (strcmp(var_name, "COR_PARAM") == 0) {
+    return retval;
+  }
+  if (strcmp(var_name, "ABS_VERT_VORT") == 0) {
     return retval;
   }
 
@@ -665,81 +690,80 @@ void write_nn_to_file(FILE *file, map *maps, int idx, int z, feature_scaling_pt 
   }
 }
 
-void get_neighbors_coordinates_horiz(velo_grid *h_velo_u_grid, velo_grid *h_velo_v_grid, map *maps,
-      uint NY_STAG, uint NX_STAG, uint NY, uint NX, uint num_support_points) {
+void get_neighbors_val_horiz(velo_grid *h_velo_u_grid, velo_grid *h_velo_v_grid, map *maps,
+      uint NY_STAG, uint NX_STAG, uint NY, uint NX, uint num_support_points, char *data_name, int *z) {
 
-  // Get the coordinates of the neighbors of each point in the grid NY x NX
-  // The neighbors are taken from the U and V grids
-  // Store the points clockwise. Only for four supporting points!
-  for (int i = 0; i < num_support_points; i++) {
-    int idx = 0;
-    for (int j = 0; j < NY; j++) {
-      for(int k = 0; k < NX; k++) {
-        switch (i) {
-          case 0: // Lower left point
-          h_velo_u_grid->x[((NY*NX)*i)+idx] = maps[U].longi->val[(NX_STAG*j)+k];
-          h_velo_u_grid->y[((NY*NX)*i)+idx] = maps[U].lat->val[(NX_STAG*j)+k];
+  if (data_name == NULL) {
+    fprintf(stderr, "Data name missing in routing get_neighbors_val_horiz().\n");
+  }
 
-          h_velo_v_grid->x[((NY*NX)*i)+idx] = maps[V].longi->val[(NX*j)+k];
-          h_velo_v_grid->y[((NY*NX)*i)+idx] = maps[V].lat->val[(NX*j)+k];
-          break;
-          case 1: // Upper left point
-          h_velo_u_grid->x[((NY*NX)*i)+idx] = maps[U].longi->val[(NX_STAG*(j+i))+k];
-          h_velo_u_grid->y[((NY*NX)*i)+idx] = maps[U].lat->val[(NX_STAG*(j+i))+k];
-
-          h_velo_v_grid->x[((NY*NX)*i)+idx] = maps[V].longi->val[(NX*(j+i))+k];
-          h_velo_v_grid->y[((NY*NX)*i)+idx] = maps[V].lat->val[(NX*(j+i))+k];
-          break;
-          case 2: // Upper right point
-          h_velo_u_grid->x[((NY*NX)*i)+idx] = maps[U].longi->val[(NX_STAG*(j+i))+k+1];
-          h_velo_u_grid->y[((NY*NX)*i)+idx] = maps[U].lat->val[(NX_STAG*(j+i))+k+1];
-
-          h_velo_v_grid->x[((NY*NX)*i)+idx] = maps[V].longi->val[(NX*(j+i))+k+1];
-          h_velo_v_grid->y[((NY*NX)*i)+idx] = maps[V].lat->val[(NX*(j+i))+k+1];
-          break;
-          case 3: // Lower right point
-          h_velo_u_grid->x[((NY*NX)*i)+idx] = maps[U].longi->val[(NX_STAG*j)+k+1];
-          h_velo_u_grid->y[((NY*NX)*i)+idx] = maps[U].lat->val[(NX_STAG*j)+k+1];
-
-          h_velo_v_grid->x[((NY*NX)*i)+idx] = maps[V].longi->val[(NX*j)+k+1];
-          h_velo_v_grid->y[((NY*NX)*i)+idx] = maps[V].lat->val[(NX*j)+k+1];
-          break;
-        }
-        idx++;
+  static bool check = false;
+  if (strcmp(data_name, "velocities") == 0) {
+    if (!check) {
+      if (z == NULL) {
+        fprintf(stderr, "z coordinate missing in routing get_neighbors_val_horiz().\n");
       }
+      check = true;
     }
   }
-}
 
-void get_neighbors_values_horiz(velo_grid *h_velo_u_grid, velo_grid *h_velo_v_grid, map *maps,
-      uint NY_STAG, uint NX_STAG, uint NY, uint NX, int z, uint num_support_points) {
+  int offset1, offset2;
 
-  // Get the values of the neighbors of each point in the grid NY x NX
+  if (strcmp(data_name, "coordinates") == 0) {
+    offset1 = 0;
+    offset2 = 0;
+  } else if (strcmp(data_name, "velocities") == 0) {
+    offset1 = *z*NY*NX_STAG;
+    offset2 = *z*NY_STAG*NX;
+  } else {
+    fprintf(stderr, "Incorrect data name.\n");
+  }
+
+  // Get the coordinates/velocities of the neighbors of each point in the grid NY x NX
   // The neighbors are taken from the U and V grids
-  // Store the points clockwise. Only for four supporting points!
-  for (int i = 0; i < num_support_points; i++) {
-    int idx = 0;
-    for (int j = 0; j < NY; j++) {
-      for(int k = 0; k < NX; k++) {
-        switch (i) {
-          case 0: // Lower left point
-          h_velo_u_grid->val[((NY*NX)*i)+idx] = maps[U].variable->val[(z*NY*NX_STAG)+(NX_STAG*j)+k];
-          h_velo_v_grid->val[((NY*NX)*i)+idx] = maps[V].variable->val[(z*NY_STAG*NX)+(NX*j)+k];
-          break;
-          case 1: // Upper left point
-          h_velo_u_grid->val[((NY*NX)*i)+idx] = maps[U].variable->val[(z*NY*NX_STAG)+(NX_STAG*(j+i))+k];
-          h_velo_v_grid->val[((NY*NX)*i)+idx] = maps[V].variable->val[(z*NY_STAG*NX)+(NX*(j+i))+k];
-          break;
-          case 2: // Upper right point
-          h_velo_u_grid->val[((NY*NX)*i)+idx] = maps[U].variable->val[(z*NY*NX_STAG)+(NX_STAG*(j+i))+k+1];
-          h_velo_v_grid->val[((NY*NX)*i)+idx] = maps[V].variable->val[(z*NY_STAG*NX)+(NX*(j+i))+k+1];
-          break;
-          case 3: // Lower right point
-          h_velo_u_grid->val[((NY*NX)*i)+idx] = maps[U].variable->val[(z*NY*NX_STAG)+(NX_STAG*j)+k+1];
-          h_velo_v_grid->val[((NY*NX)*i)+idx] = maps[V].variable->val[(z*NY_STAG*NX)+(NX*j)+k+1];
-          break;
+  // Only for two supporting points
+  if (strcmp(data_name, "coordinates") == 0) {
+    for (int i = 0; i < num_support_points; i++) {
+      int idx = 0;
+      for (int j = 0; j < NY; j++) {
+        for(int k = 0; k < NX; k++) {
+          switch (i) {
+            case 0: // Left point
+              h_velo_u_grid->x[((NY*NX)*i)+idx] = maps[U].longi->val[offset1+(NX_STAG*j)+k];
+              h_velo_u_grid->y[((NY*NX)*i)+idx] = maps[U].lat->val[offset1+(NX_STAG*j)+k];
+
+              h_velo_v_grid->x[((NY*NX)*i)+idx] = maps[V].longi->val[offset2+(NX*j)+k];
+              h_velo_v_grid->y[((NY*NX)*i)+idx] = maps[V].lat->val[offset2+(NX*j)+k];
+              break;
+            case 1: // Right point
+              h_velo_u_grid->x[((NY*NX)*i)+idx] = maps[U].longi->val[offset1+(NX_STAG*j)+k+1];
+              h_velo_u_grid->y[((NY*NX)*i)+idx] = maps[U].lat->val[offset1+(NX_STAG*j)+k+1];
+
+              h_velo_v_grid->x[((NY*NX)*i)+idx] = maps[V].longi->val[offset2+(NX*(j+1))+k];
+              h_velo_v_grid->y[((NY*NX)*i)+idx] = maps[V].lat->val[offset2+(NX*(j+1))+k];
+            break;
+          }
+          idx++;
         }
-        idx++;
+      }
+    }
+  } else if (strcmp(data_name, "velocities") == 0) {
+    for (int i = 0; i < num_support_points; i++) {
+      int idx = 0;
+      for (int j = 0; j < NY; j++) {
+        for(int k = 0; k < NX; k++) {
+          switch (i) {
+            case 0: // Left point
+              h_velo_u_grid->val[((NY*NX)*i)+idx] = maps[U].variable->val[offset1+(NX_STAG*j)+k];
+              h_velo_v_grid->val[((NY*NX)*i)+idx] = maps[V].variable->val[offset2+(NX*j)+k];
+              break;
+            case 1: // Right point
+              h_velo_u_grid->val[((NY*NX)*i)+idx] = maps[U].variable->val[offset1+(NX_STAG*j)+k+1];
+              h_velo_v_grid->val[((NY*NX)*i)+idx] = maps[V].variable->val[offset2+(NX*(j+1))+k];
+            break;
+          }
+          idx++;
+        }
       }
     }
   }
@@ -877,6 +901,37 @@ void staggered_var_scaling(float *u, float *v, float *w, float *longi, float *la
   }
 }
 
+void vorticity_scaling(float *vort,  float *longi, float *lat, uint NX, uint NY, map *maps, fd_container *vorticity,
+
+  int idx, feature_scaling_pt feature_scaling_func) {
+   bool  new_call = true;
+    int i = 0;
+    for (int y = 0; y < NY; y++) {
+      for (int x = 0; x < NX; x++) {
+        longi[i] = feature_scaling_func(maps[idx].longi->val[(y*NX)+x], maps[idx].longi->val, NY*NX, &new_call);
+        i++;
+      }
+    }
+
+    new_call = true;
+    i = 0;
+    for (int y = 0; y < NY; y++) {
+      for (int x = 0; x < NX; x++) {
+        lat[i] = feature_scaling_func(maps[idx].lat->val[(y*NX)+x], maps[idx].lat->val, NY*NX, &new_call);
+        i++;
+      }
+    }
+
+    new_call = true;
+    i = 0;
+    for (int y = 0; y < NY; y++) {
+      for (int x = 0; x < NX; x++) {
+        vort[i] = feature_scaling_func(vorticity->val[(y*NX)+x], vorticity->val, NY*NX, &new_call);
+        i++;
+      }
+    }
+}
+
 #ifdef __NVCC__
 void interpolate_wind_velo_horiz(map *maps, int idx, int z, char file[][MAX_STRING_LENGTH], char file_nn[][MAX_STRING_LENGTH],
                           dim3 block, dim3 grid, int grid_type, feature_scaling_pt feature_scaling_func) {
@@ -907,8 +962,10 @@ void interpolate_wind_velo_horiz(map *maps, int idx, int z, char file[][MAX_STRI
 
     if (grid_type == STRUCTURED) {
       // Get the neighbors values of the mass points
+      char *data_name = (char *)"velocities";
       double nv = cpu_second();
-      get_neighbors_values_horiz(h_velo_u_grid, h_velo_v_grid, maps, NY_STAG, NX_STAG, NY, NX, z, NUM_SUPPORTING_POINTS_HORIZ);
+      get_neighbors_val_horiz(h_velo_u_grid, h_velo_v_grid, maps, NY_STAG, NX_STAG, NY, NX,
+        NUM_SUPPORTING_POINTS_HORIZ, data_name, &z);
       fprintf(stdout, "Time to get neighbors values (horiz): %f sec.\n", cpu_second() - nv);
     }
 
@@ -992,9 +1049,9 @@ void interpolate_wind_velo_horiz(map *maps, int idx, int z, char file[][MAX_STRI
       uint ny = 0;
       get_horizontal_dims(COR_EAST, &nx, &ny);
 
-      for (int y = 0; y < NY; y++) {
-        for (int x = 0; x < NX; x++) {
-          float v_val = h_mass_grid->v[(y*maps[V].mass_variable->shape[3])+x];
+      for (int y = 0; y < ny; y++) {
+        for (int x = 0; x < nx; x++) {
+          float v_val = h_mass_grid->v[(y*nx)+x];
           coriolis[(z*(ny*nx))+((y*nx)+x)] = v_val;
         }
       }
@@ -1007,10 +1064,26 @@ void interpolate_wind_velo_horiz(map *maps, int idx, int z, char file[][MAX_STRI
       uint ny = 0;
       get_horizontal_dims(COR_NORTH, &nx, &ny);
 
-      for (int y = 0; y < NY; y++) {
-        for (int x = 0; x < NX; x++) {
-          float u_val = h_mass_grid->u[(y*maps[U].mass_variable->shape[3])+x];
+      for (int y = 0; y < ny; y++) {
+        for (int x = 0; x <nx; x++) {
+          float u_val = h_mass_grid->u[(y*nx)+x];
           coriolis[(z*(ny*nx))+((y*nx)+x)] = u_val;
+        }
+      }
+    }
+
+    // If the absolute vertical vorticity, store here the interpolated velocities
+    if (maps[ABS_VERT_VORT].active) {
+      uint nx = 0;
+      uint ny = 0;
+      get_horizontal_dims(ABS_VERT_VORT, &nx, &ny);
+
+      for (int y = 0; y < ny; y++) {
+        for (int x = 0; x <nx; x++) {
+          float u_val = h_mass_grid->u[(y*nx)+x];
+          float v_val = h_mass_grid->v[(y*nx)+x];
+          maps[ABS_VERT_VORT].buffer1[(z*(ny*nx))+((y*nx)+x)] = u_val;
+          maps[ABS_VERT_VORT].buffer2[(z*(ny*nx))+((y*nx)+x)] = v_val;
         }
       }
     }
@@ -1124,7 +1197,7 @@ void interpolate_var_vert(velo_grid *h_var_grid, velo_grid *d_var_grid, float *m
   int grid_type, feature_scaling_pt feature_scaling_func) {
 #else
 void interpolate_var_vert(velo_grid *h_var_grid, map *maps, int idx, int z, char file[][MAX_STRING_LENGTH],
-  char file_nn[][MAX_STRING_LENGTH], float **buffer, int grid_typeinterpolate_var_vert, feature_scaling_pt feature_scaling_func) {
+  char file_nn[][MAX_STRING_LENGTH], float **buffer, int grid_type, feature_scaling_pt feature_scaling_func) {
 #endif
 
     FILE *f = fopen(file[0], "w");
@@ -1288,6 +1361,91 @@ void interpolate_var_vert(velo_grid *h_var_grid, map *maps, int idx, int z, char
 
     fclose(f);
     fclose(f_nn);
+}
+
+#ifdef __NVCC__
+void compute_vorticity(fd_container *h_vorticity, fd_container *d_vorticity, map *maps, int idx,
+  int z, char file[][MAX_STRING_LENGTH], char file_nn[][MAX_STRING_LENGTH], dim3 block, dim3 grid,
+  int grid_type, feature_scaling_pt feature_scaling_func) {
+#else
+void compute_vorticity(fd__container *h_vorticity, map *maps, int idx, int z, char file[][MAX_STRING_LENGTH],
+  char file_nn[][MAX_STRING_LENGTH], float **buffer, int grid_typeinterpolate_var_vert,
+  feature_scaling_pt feature_scaling_func) {
+#endif
+
+    if (grid_type == UNSTRUCTURED) {
+      fprintf(stderr, "Finite difference approximation not for unstructured mesh.\n");
+    }
+
+    FILE *f = fopen(file[0], "w");
+    fprintf(f, "longitude,latitude,%s\n", maps[idx].out_name);
+
+    FILE *f_nn = fopen(file_nn[0], "w");
+    fprintf(f_nn, "longitude,latitude,%s\n", maps[idx].out_name);
+
+    fprintf(stdout, "( ------ Compute %s at layer %d\n", maps[idx].name, z);
+
+    // Get the stencils values
+    get_stencils_values(domain_tags, h_vorticity, maps[idx].buffer2, maps[idx].buffer1, NY, NX, z);
+
+#ifdef __NVCC__
+    {
+      float *v[1];
+      cudaMemcpy(&(v[0]), &(d_vorticity[0].stencils_val), sizeof(float *), cudaMemcpyDeviceToHost);
+      cudaMemcpy(v[0], h_vorticity->stencils_val, (6*NY*NX)*sizeof(float), cudaMemcpyHostToDevice);
+    }
+
+    double i_start = cpu_second();
+    gpu_compute_ref_vert_vort<<<grid, block>>>(d_vorticity, NY, NX, DY, DX);
+
+    cudaDeviceSynchronize();
+    double i_elaps = cpu_second() - i_start;
+    fprintf(stdout, ">>>>>>>>>>>> elapsed (compute): %f sec.\n", i_elaps);
+
+    i_start = cpu_second();
+    {
+      float *vort[1];
+      cudaMemcpy(&(vort[0]), &(d_vorticity[0].val), sizeof(float *), cudaMemcpyDeviceToHost);
+      cudaMemcpy(h_vorticity->val, vort[0], (NY*NX)*sizeof(float), cudaMemcpyDeviceToHost);
+    }
+    i_elaps = cpu_second() - i_start;
+    fprintf(stdout, ">>>>>>>>>>>> elapsed (data copy): %f sec.\n", i_elaps);
+
+    i_start = cpu_second();
+    for (int y = 0; y < NY; y++) {
+     for (int x = 0; x < NX; x++) {
+       float longi = maps[idx].longi->val[(y*NX)+x];
+       float lat   = maps[idx].lat->val[(y*NX)+x];
+       float vort  = h_vorticity->val[(y*NX)+x];
+       fprintf(f, "%f,%f,%f\n", longi, lat, vort);
+     }
+    }
+
+    float longi[NY*NX];
+    float lat[NY*NX];
+    float vort_nn[NY*NX];
+    memset(longi, 0.0f, sizeof(longi));
+    memset(lat, 0.0f, sizeof(lat));
+    memset(vort_nn, 0.0f, sizeof(vort_nn));
+
+    vorticity_scaling(vort_nn, longi, lat, NX, NY, maps, h_vorticity, idx, feature_scaling_func);
+
+    int i = 0;
+    for (int y = 0; y < NY; y++) {
+      for (int x = 0; x < NX; x++) {
+        fprintf(f_nn, "%f,%f,%f\n", longi[i], lat[i], vort_nn[i]);
+        i++;
+      }
+    }
+
+    i_elaps = cpu_second() -  i_start;
+    fprintf(stdout, ">>>>>>>>>>>> elapsed (write file): %f sec.\n", i_elaps);
+#else
+  // Not implemented yet
+#endif
+
+  fclose(f);
+  fclose(f_nn);
 }
 
 //---------------------------------------------------------------------------------------------------------------------
@@ -1465,14 +1623,14 @@ int write_data(map *maps, int idx, char *run, bool no_interpol_out, int grid_typ
     } else {
       if (strcmp(maps[idx].name, "ZNU") != 0 && strcmp(maps[idx].name, "ZNW") != 0 &&
           strcmp(maps[idx].name, "W") != 0 && strcmp(maps[idx].name, "PHB") != 0 &&
-          strcmp(maps[idx].name, "PH") != 0) {
+          strcmp(maps[idx].name, "PH") != 0 && strcmp(maps[idx].name, "ABS_VERT_VORT") != 0) {
             f = fopen(file[0], "w");
       }
     }
 
     if (strcmp(maps[idx].name, "U") != 0 && strcmp(maps[idx].name, "V") != 0 &&
         strcmp(maps[idx].name, "W") != 0 && strcmp(maps[idx].name, "PHB") != 0 &&
-        strcmp(maps[idx].name, "PH") != 0) {
+        strcmp(maps[idx].name, "PH") != 0 && strcmp(maps[idx].name, "ABS_VERT_VORT") != 0) {
           f_nn = fopen(file_nn[0], "w");
     }
 
@@ -1493,7 +1651,7 @@ int write_data(map *maps, int idx, char *run, bool no_interpol_out, int grid_typ
           strcmp(maps[idx].name, "COR_EAST") != 0 && strcmp(maps[idx].name, "COR_NORTH") != 0 &&
           strcmp(maps[idx].name, "W") != 0 && strcmp(maps[idx].name, "PHB") != 0 &&
           strcmp(maps[idx].name, "PH") != 0 && strcmp(maps[idx].name, "GEOPOTENTIAL") != 0 &&
-          strcmp(maps[idx].name, "COR_PARAM") != 0) {
+          strcmp(maps[idx].name, "COR_PARAM") != 0 && strcmp(maps[idx].name, "ABS_VERT_VORT") != 0) {
             write_visual_to_file(f, maps, idx, z);
       }
     }
@@ -1510,7 +1668,7 @@ int write_data(map *maps, int idx, char *run, bool no_interpol_out, int grid_typ
         strcmp(maps[idx].name, "COR_EAST") != 0 && strcmp(maps[idx].name, "COR_NORTH") != 0 &&
         strcmp(maps[idx].name, "W") != 0 && strcmp(maps[idx].name, "PHB") != 0 &&
         strcmp(maps[idx].name, "PH") != 0 && strcmp(maps[idx].name, "GEOPOTENTIAL") != 0 &&
-        strcmp(maps[idx].name, "COR_PARAM") != 0) {
+        strcmp(maps[idx].name, "COR_PARAM") != 0 && strcmp(maps[idx].name, "ABS_VERT_VORT") != 0) {
           write_nn_to_file(f_nn, maps, idx, z, feature_scaling_func);
     }
 
@@ -1523,7 +1681,7 @@ int write_data(map *maps, int idx, char *run, bool no_interpol_out, int grid_typ
           strcmp(maps[idx].name, "COR_EAST") != 0 && strcmp(maps[idx].name, "COR_NORTH") != 0 &&
           strcmp(maps[idx].name, "W") != 0 && strcmp(maps[idx].name, "PHB") != 0 &&
           strcmp(maps[idx].name, "PH") != 0 && strcmp(maps[idx].name, "GEOPOTENTIAL") != 0 &&
-          strcmp(maps[idx].name, "COR_PARAM") != 0) {
+          strcmp(maps[idx].name, "COR_PARAM") != 0 && strcmp(maps[idx].name, "ABS_VERT_VORT") != 0) {
             fclose(f);
       }
     }
@@ -1532,7 +1690,7 @@ int write_data(map *maps, int idx, char *run, bool no_interpol_out, int grid_typ
         strcmp(maps[idx].name, "COR_EAST") != 0 && strcmp(maps[idx].name, "COR_NORTH") != 0 &&
         strcmp(maps[idx].name, "W") != 0 && strcmp(maps[idx].name, "PHB") != 0 &&
         strcmp(maps[idx].name, "PH") != 0 && strcmp(maps[idx].name, "GEOPOTENTIAL") != 0 &&
-        strcmp(maps[idx].name, "COR_PARAM") != 0) {
+        strcmp(maps[idx].name, "COR_PARAM") != 0 && strcmp(maps[idx].name, "ABS_VERT_VORT") != 0) {
           fclose(f_nn);
     }
 #ifdef __NVCC__
@@ -1703,6 +1861,15 @@ int write_data(map *maps, int idx, char *run, bool no_interpol_out, int grid_typ
         fclose(f_nn);
       }
     }
+
+    if (strcmp(maps[idx].name, "ABS_VERT_VORT") == 0) {
+#ifdef __NVCC__
+    compute_vorticity(h_vorticity, d_vorticity, maps, idx, z, file, file_nn, block, grid, grid_type,
+                      feature_scaling_func);
+#else
+    // Not implemented yet
+#endif
+    }
   } // End z loop
   double i_elaps = cpu_second() - i_start;
   fprintf(stdout, ">>>>>>>>>>>> elapsed (%d layers): %f sec.\n",  num_layers, i_elaps);
@@ -1780,26 +1947,27 @@ int process(char files[][MAX_STRING_LENGTH], uint num_files, bool no_interpol_ou
 
     shape[0] = NT; shape[1] = NZ; shape[2] = NY; shape[3] = NX;
     rank = 4;
-    cldfra       = allocate_tensor(shape, rank);
-    p            = allocate_tensor(shape, rank);
-    pb           = allocate_tensor(shape, rank);
-    phyd         = allocate_tensor(shape, rank);
-    qcloud       = allocate_tensor(shape, rank);
-    qgraup       = allocate_tensor(shape, rank);
-    qice         = allocate_tensor(shape, rank);
-    qngraupel    = allocate_tensor(shape, rank);
-    qnice        = allocate_tensor(shape, rank);
-    qnrain       = allocate_tensor(shape, rank);
-    qnsnow       = allocate_tensor(shape, rank);
-    qrain        = allocate_tensor(shape, rank);
-    qsnow        = allocate_tensor(shape, rank);
-    qvapor       = allocate_tensor(shape, rank);
-    t            = allocate_tensor(shape, rank);
-    pressure     = allocate_tensor(shape, rank);
-    cor_east     = allocate_tensor(shape, rank);
-    cor_north    = allocate_tensor(shape, rank);
-    geopotential = allocate_tensor(shape, rank);
-    cor_param    = allocate_tensor(shape, rank);
+    cldfra        = allocate_tensor(shape, rank);
+    p             = allocate_tensor(shape, rank);
+    pb            = allocate_tensor(shape, rank);
+    phyd          = allocate_tensor(shape, rank);
+    qcloud        = allocate_tensor(shape, rank);
+    qgraup        = allocate_tensor(shape, rank);
+    qice          = allocate_tensor(shape, rank);
+    qngraupel     = allocate_tensor(shape, rank);
+    qnice         = allocate_tensor(shape, rank);
+    qnrain        = allocate_tensor(shape, rank);
+    qnsnow        = allocate_tensor(shape, rank);
+    qrain         = allocate_tensor(shape, rank);
+    qsnow         = allocate_tensor(shape, rank);
+    qvapor        = allocate_tensor(shape, rank);
+    t             = allocate_tensor(shape, rank);
+    pressure      = allocate_tensor(shape, rank);
+    cor_east      = allocate_tensor(shape, rank);
+    cor_north     = allocate_tensor(shape, rank);
+    geopotential  = allocate_tensor(shape, rank);
+    cor_param     = allocate_tensor(shape, rank);
+    abs_vert_vort = allocate_tensor(shape, rank);
 
     shape[1] = NZ_STAG;
     ph    = allocate_tensor(shape, rank);
@@ -1830,6 +1998,13 @@ int process(char files[][MAX_STRING_LENGTH], uint num_files, bool no_interpol_ou
       if ((retval = load_variable(ncid, maps[i].name, maps[i].variable))) {
           ERR(retval);
         }
+    }
+
+    // If the vorticity field is computed, set the fd tags here
+    // Memory allocation using the mass points dimensions
+    if (maps[ABS_VERT_VORT].active) {
+      domain_tags = allocate_fd_tags(NY*NX);
+      set_fd_tags(domain_tags, NY, NX);
     }
 
     // If required, compute the full pressure here
@@ -1901,10 +2076,11 @@ int process(char files[][MAX_STRING_LENGTH], uint num_files, bool no_interpol_ou
 
       double nc = cpu_second();
       // Get the neighbors coordinates of the mass points (horizontal)
-      get_neighbors_coordinates_horiz(h_velo_u_grid, h_velo_v_grid, maps, NY_STAG, NX_STAG, NY, NX,
-        NUM_SUPPORTING_POINTS_HORIZ);
-        fprintf(stdout, "Time to get neighbors coordinates in horizontal: %f sec.\n", cpu_second() - nc);
-      }
+      char *data_name = (char *)"coordinates";
+      get_neighbors_val_horiz(h_velo_u_grid, h_velo_v_grid, maps, NY_STAG, NX_STAG, NY, NX,
+        NUM_SUPPORTING_POINTS_HORIZ, data_name, NULL);
+      fprintf(stdout, "Time to get neighbors coordinates in horizontal: %f sec.\n", cpu_second() - nc);
+    }
 
 #ifdef __NVCC__
 
@@ -2178,6 +2354,60 @@ int process(char files[][MAX_STRING_LENGTH], uint num_files, bool no_interpol_ou
 
 #endif
 
+    if (maps[ABS_VERT_VORT].active) {
+      h_vorticity = (fd_container *) malloc(sizeof(fd_container));
+      h_vorticity->val = (float *)malloc((NY*NX)*sizeof(float));
+      h_vorticity->stencils_val = (float *)malloc((6*NY*NX)*sizeof(float));
+      h_vorticity->buffer = (float *)malloc((NY*NX)*sizeof(float));
+      memset(h_vorticity->val, 0.0f, (NY*NX)*sizeof(float));
+      memset(h_vorticity->stencils_val, 0.0f, (6*NY*NX)*sizeof(float));
+      memset(h_vorticity->buffer, 0.0f, (NY*NX)*sizeof(float));
+#ifdef __NVCC__
+      if (cudaMalloc((fd_container**)&d_vorticity, sizeof(fd_container)) != cudaSuccess) {
+        fprintf(stderr, "Memory allocation failure for vorticity on device.\n");
+        exit(EXIT_FAILURE);
+      }
+
+      if (cudaMemcpy(d_vorticity, h_vorticity, sizeof(fd_container), cudaMemcpyHostToDevice) != cudaSuccess) {
+        fprintf(stderr, "Memory copy <vorticity> failure to device.\n");
+        exit(EXIT_FAILURE);
+      }
+      {
+        float *v[1];
+        cudaMalloc(&(v[0]), (NY*NX)*sizeof(float));
+        cudaMemcpy(&(d_vorticity[0].val), &(v[0]), sizeof(float *), cudaMemcpyHostToDevice);
+        cudaMemset(v[0], 0.0f, (NY*NX)*sizeof(float));
+      }
+      {
+        float *v[1];
+        cudaMalloc(&(v[0]), (6*NY*NX)*sizeof(float));
+        cudaMemcpy(&(d_vorticity[0].stencils_val), &(v[0]), sizeof(float *), cudaMemcpyHostToDevice);
+        cudaMemset(v[0], 0.0f, (6*NY*NX)*sizeof(float));
+      }
+      {
+        float *v[1];
+        cudaMalloc(&(v[0]), (NY*NX)*sizeof(float));
+        cudaMemcpy(&(d_vorticity[0].buffer), &(v[0]), sizeof(float *), cudaMemcpyHostToDevice);
+        cudaMemset(v[0], 0.0f, (NY*NX)*sizeof(float));
+      }
+
+      // Allocate space to store (U,V)
+      maps[ABS_VERT_VORT].buffer1 = (float *)malloc((NZ*NY*NX)*sizeof(float));
+      maps[ABS_VERT_VORT].buffer2 = (float *)malloc((NZ*NY*NX)*sizeof(float));
+
+      // Copy the values of the latitude to the device
+      {
+        float *lat = maps[XLAT].variable->val;
+        float *v[1];
+        cudaMemcpy(&(v[0]), &(d_vorticity[0].buffer), sizeof(float *), cudaMemcpyDeviceToHost);
+        cudaMemcpy(v[0], lat, (NY*NX)*sizeof(float), cudaMemcpyHostToDevice);
+      }
+
+#else
+      fprintf(stderr, "Computing the vorticity is not implemented in serial yet.\n");
+#endif
+    }
+
     double i_start = cpu_second();
     for (int i = 0; i < NUM_VARIABLES; i++) {
       if (write_data(maps, i, run, no_interpol_out, grid_type, feature_scaling_func) != 0) return -1;
@@ -2231,6 +2461,11 @@ int process(char files[][MAX_STRING_LENGTH], uint num_files, bool no_interpol_ou
     deallocate_tensor(cor_north);
     deallocate_tensor(geopotential);
     deallocate_tensor(cor_param);
+    deallocate_tensor(abs_vert_vort);
+
+    if (domain_tags != NULL) {
+      free(domain_tags);
+    }
 
     if (grid_type == STRUCTURED) {
       free(h_velo_u_grid->x);
@@ -2366,7 +2601,36 @@ int process(char files[][MAX_STRING_LENGTH], uint num_files, bool no_interpol_ou
     }
     cudaFree(d_mass_grid);
 #endif
-  }
+
+    if (maps[ABS_VERT_VORT].active) {
+      free(h_vorticity->val);
+      free(h_vorticity->stencils_val);
+      free(h_vorticity);
+#ifdef __NVCC__
+      {
+        float *v[1];
+        cudaMemcpy(&(v[0]), &(d_vorticity[0].val), sizeof(float *), cudaMemcpyDeviceToHost);
+        cudaFree(v[0]);
+      }
+      {
+        float *v[1];
+        cudaMemcpy(&(v[0]), &(d_vorticity[0].stencils_val), sizeof(float *), cudaMemcpyDeviceToHost);
+        cudaFree(v[0]);
+      }
+      {
+        float *v[1];
+        cudaMemcpy(&(v[0]), &(d_vorticity[0].buffer), sizeof(float *), cudaMemcpyDeviceToHost);
+        cudaFree(v[0]);
+      }
+      cudaFree(d_vorticity);
+#endif
+      free(maps[ABS_VERT_VORT].buffer1);
+      free(maps[ABS_VERT_VORT].buffer2);
+    }
+// --------------------------------------------------------------------------------------------------
+  } // End loop over files
+// --------------------------------------------------------------------------------------------------
+
   return 0;
 }
 

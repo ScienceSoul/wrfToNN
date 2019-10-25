@@ -25,6 +25,8 @@ typedef struct map {
   tensor *lat;
   tensor *mass_longi;
   tensor *mass_lat;
+  float *buffer1;
+  float *buffer2;
   bool active;
 } map;
 

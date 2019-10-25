@@ -21,7 +21,7 @@ endif
 ifeq ($(PLATEFORM),Darwin)
 	CFLAGS = -Wall -Ofast
 else
-	CFLAGS = -O3 -Xptxas -v
+	CFLAGS = -g #-O3 -Xptxas -v
 endif
 
 ifeq ($(PLATEFORM),Darwin)
@@ -94,7 +94,9 @@ depend: $(SRCS)
 
 # DO NOT DELETE THIS LINE -- make depend needs it
 
-feature_scaling.o: /usr/include/math.h ../include/feature_scaling.h
+feature_scaling.o: /usr/include/math.h /usr/include/stdio.h
+feature_scaling.o: ../include/feature_scaling.h ../include/gpu.h
+finite_difference.o: ../include/finite_difference.h
 gpu.o: /usr/include/stdio.h ../include/gpu.h
 interpolate.o: ../include/interpolate.h /usr/include/math.h
 interpolate.o: ../include/memory.h /usr/include/stdlib.h /usr/include/stdio.h

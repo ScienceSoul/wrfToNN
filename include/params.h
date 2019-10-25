@@ -12,7 +12,7 @@
 
 // The number of supporting points for the interpolation in the
 // horizontal plane
-#define NUM_SUPPORTING_POINTS_HORIZ 4
+#define NUM_SUPPORTING_POINTS_HORIZ 2
 
 // The number of supporting points for tehe interpolation in the
 // vertical plane
@@ -48,6 +48,9 @@ enum {
 #define DEF_NZ_SOIL_STAG 4;
 
 #define DEF_NT 1;
+
+#define DEF_DX 9000.f;
+#define DEF_DY 9000.f;
 // ----------------------------------
 
 // ------------------------------------------------------
@@ -78,38 +81,40 @@ typedef enum variables_code {
 
     // 3D variables
     // ----------------------------------
-    CLDFRA,       // Cloud fraction
-    P,            // Perturbation pressure
-    PB,           // Base state pressure
-    PH,           // Perturbation geopotential
-    PHB,          // Base-state geopotential
-    P_HYD,        // hydrostatic presure
-    QCLOUD,       // Cloud water mixing fraction
-    QGRAUP,       // Graupel mixing ratio
-    QICE,         // Ice mixing ratio
-    QNGRAUPEL,    // Graupel number concentration
-    QNICE,        // Ice number concentration
-    QNRAIN,       // Rain number concentration
-    QNSNOW,       // Snow number concentration
-    QRAIN,        // Rain water mixing ratio
-    QSNOW,        // Snow mixing ratio
-    QVAPOR,       // Water vapor mixing ratio
-    SH2O,         // Soil liquid water
-    SMCREL,       // Relative soil moisture
-    SMOIS,        // Soil moisture
-    T,            // Perturbation potential temperature (theta-t0)
-    TSLB,         // Soil temperature
-    U,            // x-wind component
-    V,            // y-wind component
-    W,            // z-wind component
-    PRESSURE,     // The full pressure = P + PB
-    COR_EAST,     // Coriolis force directed due East
-    COR_NORTH,    // Coriolis force directed due North
-    GEOPOTENTIAL, // The full geopotential = PH + PHB
-    COR_PARAM     // Coriolis parameter 2*\omega*sin(\phy)
+    CLDFRA,        // Cloud fraction
+    P,             // Perturbation pressure
+    PB,            // Base state pressure
+    PH,            // Perturbation geopotential
+    PHB,           // Base-state geopotential
+    P_HYD,         // hydrostatic presure
+    QCLOUD,        // Cloud water mixing fraction
+    QGRAUP,        // Graupel mixing ratio
+    QICE,          // Ice mixing ratio
+    QNGRAUPEL,     // Graupel number concentration
+    QNICE,         // Ice number concentration
+    QNRAIN,        // Rain number concentration
+    QNSNOW,        // Snow number concentration
+    QRAIN,         // Rain water mixing ratio
+    QSNOW,         // Snow mixing ratio
+    QVAPOR,        // Water vapor mixing ratio
+    SH2O,          // Soil liquid water
+    SMCREL,        // Relative soil moisture
+    SMOIS,         // Soil moisture
+    T,             // Perturbation potential temperature (theta-t0)
+    TSLB,          // Soil temperature
+    U,             // x-wind component
+    V,             // y-wind component
+    W,             // z-wind component
+    PRESSURE,      // The full pressure = P + PB
+    COR_EAST,      // Coriolis force directed due East
+    COR_NORTH,     // Coriolis force directed due North
+    GEOPOTENTIAL,  // The full geopotential = PH + PHB
+    COR_PARAM,     // Coriolis parameter 2*\omega*sin(\phy)
+    ABS_VERT_VORT  // Absolute vertical
+                   // vorticity = f + reference vertical vorticity
 } variables_code;
 
-#define DEF_NUM_VARIABLES 42;
+#define DEF_NUM_VARIABLES 43;
 
 const char *active_flags[] = {"ZNU:1",
                               "ZNW:1",
@@ -137,7 +142,7 @@ const char *active_flags[] = {"ZNU:1",
                               "QNICE:0",
                               "QNRAIN:0",
                               "QNSNOW:0",
-                              "QRAIN:0",
+                              "QRAIN:1",
                               "QSNOW:0",
                               "QVAPOR:1",
                               "SH20:0",
@@ -152,6 +157,7 @@ const char *active_flags[] = {"ZNU:1",
                               "COR_EAST:1",
                               "COR_NORTH:1",
                               "GEOPOTENTIAL:1",
-                              "COR_PARAM:1"};
+                              "COR_PARAM:1",
+                              "ABS_VERT_VORT:1"};
 
 #endif

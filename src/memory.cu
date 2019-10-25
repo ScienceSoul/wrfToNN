@@ -42,6 +42,8 @@ map *allocate_maps(int num_variables) {
     m[i].lat = NULL;
     m[i].mass_longi = NULL;
     m[i].mass_lat = NULL;
+    m[i].buffer1 = NULL;
+    m[i].buffer2 = NULL;
     m[i].active = false;
   }
   return m;
