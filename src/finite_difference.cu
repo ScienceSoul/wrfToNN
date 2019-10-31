@@ -145,6 +145,6 @@ __global__ void gpu_compute_ref_vert_vort(fd_container *fd_container, const int 
    float rad_lat = fd_container->buffer[IDX] * M_PI/180.0f;
    float f = 2.0f*earth_angular_velocity*sinf(rad_lat);
 
-   fd_container->val[IDX] = f + (dv_dx - du_dy);
+   fd_container->val[IDX] = (f + (dv_dx - du_dy))*1.0e06; // Return the result in (micoseconds)^-1
  }
 #endif
