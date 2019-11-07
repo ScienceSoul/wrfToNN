@@ -124,311 +124,440 @@ fd_tags *domain_tags = NULL;
 map *maps = NULL;
 // ----------------------------------
 
-void set_maps(map *maps) {
+void set_maps(map *maps, bool initial) {
 
   for (int i = 0; i < NUM_VARIABLES; i++) {
 
     switch (i) {
       case ZNU:
-        maps[i].name = "ZNU";
-        maps[i].out_name = "ZNU";
-        maps[i].variable = znu;
-        maps[i].longi = znu; // Just for dummy
-        maps[i].lat = znu;   // Just for dummy
+        if (initial) {
+          maps[i].name = "ZNU";
+          maps[i].out_name = "ZNU";
+        } else {
+          maps[i].variable = znu;
+          maps[i].longi = znu; // Just for dummy
+          maps[i].lat = znu;   // Just for dummy
+        }
         break;
       case ZNW:
-        maps[i].name = "ZNW";
-        maps[i].out_name = "ZNW";
-        maps[i].variable = znw;
-        maps[i].longi = znw; // Just for dummy
-        maps[i].lat = znw;   // Just for dummy
+        if (initial) {
+          maps[i].name = "ZNW";
+          maps[i].out_name = "ZNW";
+        } else {
+          maps[i].variable = znw;
+          maps[i].longi = znw; // Just for dummy
+          maps[i].lat = znw;   // Just for dummy
+        }
         break;
       case XLAT:
-        maps[i].name = "XLAT";
-        maps[i].variable = xlat;
-        maps[i].longi = xlong;
-        maps[i].lat = xlat;
+        if (initial) {
+          maps[i].name = "XLAT";
+        } else {
+          maps[i].variable = xlat;
+          maps[i].longi = xlong;
+          maps[i].lat = xlat;
+        }
         break;
       case XLAT_U:
-        maps[i].name = "XLAT_U";
-        maps[i].variable = xlat_u;
-        maps[i].longi = xlong_u;
-        maps[i].lat = xlat_u;
+        if (initial) {
+          maps[i].name = "XLAT_U";
+        } else {
+          maps[i].variable = xlat_u;
+          maps[i].longi = xlong_u;
+          maps[i].lat = xlat_u;
+        }
         break;
       case XLAT_V:
-        maps[i].name = "XLAT_V";
-        maps[i].variable = xlat_v;
-        maps[i].longi = xlong_v;
-        maps[i].lat = xlat_v;
+        if (initial) {
+          maps[i].name = "XLAT_V";
+        } else {
+          maps[i].variable = xlat_v;
+          maps[i].longi = xlong_v;
+          maps[i].lat = xlat_v;
+        }
         break;
       case XLONG:
+        if (initial) {
         maps[i].name = "XLONG";
-        maps[i].variable = xlong;
-        maps[i].longi = xlong;
-        maps[i].lat = xlat;
+        } else {
+          maps[i].variable = xlong;
+          maps[i].longi = xlong;
+          maps[i].lat = xlat;
+        }
         break;
       case XLONG_U:
-        maps[i].name = "XLONG_U";
-        maps[i].variable = xlong_u;
-        maps[i].longi = xlong_u;
-        maps[i].lat = xlat_u;
+        if (initial) {
+          maps[i].name = "XLONG_U";
+        } else {
+          maps[i].variable = xlong_u;
+          maps[i].longi = xlong_u;
+          maps[i].lat = xlat_u;
+        }
         break;
       case XLONG_V:
-        maps[i].name = "XLONG_V";
-        maps[i].variable = xlong_v;
-        maps[i].longi = xlong_v;
-        maps[i].lat = xlat_v;
+        if (initial) {
+          maps[i].name = "XLONG_V";
+        } else {
+          maps[i].variable = xlong_v;
+          maps[i].longi = xlong_v;
+          maps[i].lat = xlat_v;
+        }
         break;
       case SST:
-        maps[i].name = "SST";
-        maps[i].out_name = "SST";
-        maps[i].variable = sst;
-        maps[i].longi = xlong;
-        maps[i].lat = xlat;
+        if (initial) {
+          maps[i].name = "SST";
+          maps[i].out_name = "SST";
+        } else {
+          maps[i].variable = sst;
+          maps[i].longi = xlong;
+          maps[i].lat = xlat;
+        }
         break;
       case MU:
-        maps[i].name = "MU";
-        maps[i].out_name = "MU";
-        maps[i].variable = mu;
-        maps[i].longi = xlong;
-        maps[i].lat = xlat;
+        if (initial) {
+          maps[i].name = "MU";
+          maps[i].out_name = "MU";
+        } else {
+          maps[i].variable = mu;
+          maps[i].longi = xlong;
+          maps[i].lat = xlat;
+        }
         break;
       case MUB:
-        maps[i].name = "MUB";
-        maps[i].out_name = "MUB";
-        maps[i].variable = mub;
-        maps[i].longi = xlong;
-        maps[i].lat = xlat;
+        if (initial) {
+          maps[i].name = "MUB";
+          maps[i].out_name = "MUB";
+        } else {
+          maps[i].variable = mub;
+          maps[i].longi = xlong;
+          maps[i].lat = xlat;
+        }
         break;
       case DRY_MASS:
-        maps[i].name = "DRY_MASS";
-        maps[i].out_name = "DRY_MASS";
-        maps[i].variable = dry_mass;
-        maps[i].longi = xlong;
-        maps[i].lat = xlat;
+        if (initial) {
+          maps[i].name = "DRY_MASS";
+          maps[i].out_name = "DRY_MASS";
+        } else {
+          maps[i].variable = dry_mass;
+          maps[i].longi = xlong;
+          maps[i].lat = xlat;
+        }
         break;
       case OLR:
-        maps[i].name = "OLR";
-        maps[i].out_name = "OLR";
-        maps[i].variable = olr;
-        maps[i].longi = xlong;
-        maps[i].lat = xlat;
+        if (initial) {
+          maps[i].name = "OLR";
+          maps[i].out_name = "OLR";
+        } else {
+          maps[i].variable = olr;
+          maps[i].longi = xlong;
+          maps[i].lat = xlat;
+        }
         break;
       case CLDFRA:
-        maps[i].name = "CLDFRA";
-        maps[i].out_name = "CLDFRA";
-        maps[i].variable = cldfra;
-        maps[i].longi = xlong;
-        maps[i].lat = xlat;
+        if (initial) {
+          maps[i].name = "CLDFRA";
+          maps[i].out_name = "CLDFRA";
+        } else {
+          maps[i].variable = cldfra;
+          maps[i].longi = xlong;
+          maps[i].lat = xlat;
+        }
         break;
       case P:
-        maps[i].name = "P";
-        maps[i].out_name = "PERT_P";
-        maps[i].variable = p;
-        maps[i].longi = xlong;
-        maps[i].lat = xlat;
+        if (initial) {
+          maps[i].name = "P";
+          maps[i].out_name = "PERT_P";
+        } else {
+          maps[i].variable = p;
+          maps[i].longi = xlong;
+          maps[i].lat = xlat;
+        }
         break;
       case PB:
-        maps[i].name = "PB";
-        maps[i].out_name = "PB";
-        maps[i].variable = pb;
-        maps[i].longi = xlong;
-        maps[i].lat = xlat;
+        if (initial) {
+          maps[i].name = "PB";
+          maps[i].out_name = "PB";
+        } else {
+          maps[i].variable = pb;
+          maps[i].longi = xlong;
+          maps[i].lat = xlat;
+        }
         break;
       case PH:
-        maps[i].name = "PH";
-        maps[i].out_name = "PH";
-        maps[i].variable = ph;
-        maps[i].longi = xlong;
-        maps[i].lat = xlat;
+        if (initial) {
+          maps[i].name = "PH";
+          maps[i].out_name = "PH";
+        } else {
+          maps[i].variable = ph;
+          maps[i].longi = xlong;
+          maps[i].lat = xlat;
+        }
         break;
       case PHB:
-        maps[i].name = "PHB";
-        maps[i].out_name = "PHB";
-        maps[i].variable = phb;
-        maps[i].longi = xlong;
-        maps[i].lat = xlat;
+        if (initial) {
+          maps[i].name = "PHB";
+          maps[i].out_name = "PHB";
+        } else {
+          maps[i].variable = phb;
+          maps[i].longi = xlong;
+          maps[i].lat = xlat;
+        }
         break;
       case P_HYD:
-        maps[i].name = "P_HYD";
-        maps[i].out_name = "P_HYD";
-        maps[i].variable = phyd;
-        maps[i].longi = xlong;
-        maps[i].lat = xlat;
+        if (initial) {
+          maps[i].name = "P_HYD";
+          maps[i].out_name = "P_HYD";
+        } else {
+          maps[i].variable = phyd;
+          maps[i].longi = xlong;
+          maps[i].lat = xlat;
+        }
         break;
       case QCLOUD:
-        maps[i].name = "QCLOUD";
-        maps[i].out_name = "QCLOUD";
-        maps[i].variable = qcloud;
-        maps[i].longi = xlong;
-        maps[i].lat = xlat;
+        if (initial) {
+          maps[i].name = "QCLOUD";
+          maps[i].out_name = "QCLOUD";
+        } else {
+          maps[i].variable = qcloud;
+          maps[i].longi = xlong;
+          maps[i].lat = xlat;
+        }
         break;
       case QGRAUP:
-        maps[i].name = "QGRAUP";
-        maps[i].out_name = "QGRAUP";
-        maps[i].variable = qgraup;
-        maps[i].longi = xlong;
-        maps[i].lat = xlat;
+        if (initial) {
+          maps[i].name = "QGRAUP";
+          maps[i].out_name = "QGRAUP";
+        } else {
+          maps[i].variable = qgraup;
+          maps[i].longi = xlong;
+          maps[i].lat = xlat;
+        }
         break;
       case QICE:
-        maps[i].name = "QICE";
-        maps[i].out_name = "QICE";
-        maps[i].variable = qice;
-        maps[i].longi = xlong;
-        maps[i].lat = xlat;
+        if (initial) {
+          maps[i].name = "QICE";
+          maps[i].out_name = "QICE";
+        } else {
+          maps[i].variable = qice;
+          maps[i].longi = xlong;
+          maps[i].lat = xlat;
+        }
         break;
       case QNGRAUPEL:
-        maps[i].name = "QNGRAUPEL";
-        maps[i].out_name = "QNGRAUPEL";
-        maps[i].variable = qngraupel;
-        maps[i].longi = xlong;
-        maps[i].lat = xlat;
+        if (initial) {
+          maps[i].name = "QNGRAUPEL";
+          maps[i].out_name = "QNGRAUPEL";
+        } else {
+          maps[i].variable = qngraupel;
+          maps[i].longi = xlong;
+          maps[i].lat = xlat;
+        }
         break;
       case QNICE:
-        maps[i].name = "QNICE";
-        maps[i].out_name = "QNICE";
-        maps[i].variable = qnice;
-        maps[i].longi = xlong;
-        maps[i].lat = xlat;
+        if (initial) {
+          maps[i].name = "QNICE";
+          maps[i].out_name = "QNICE";
+        } else {
+          maps[i].variable = qnice;
+          maps[i].longi = xlong;
+          maps[i].lat = xlat;
+        }
         break;
       case QNRAIN:
-        maps[i].name = "QNRAIN";
-        maps[i].out_name = "QNRAIN";
-        maps[i].variable = qnrain;
-        maps[i].longi = xlong;
-        maps[i].lat = xlat;
+        if (initial) {
+          maps[i].name = "QNRAIN";
+          maps[i].out_name = "QNRAIN";
+        } else {
+          maps[i].variable = qnrain;
+          maps[i].longi = xlong;
+          maps[i].lat = xlat;
+        }
         break;
       case QNSNOW:
-        maps[i].name = "QNSNOW";
-        maps[i].out_name = "QNSNOW";
-        maps[i].variable = qnsnow;
-        maps[i].longi = xlong;
-        maps[i].lat = xlat;
+        if (initial) {
+          maps[i].name = "QNSNOW";
+          maps[i].out_name = "QNSNOW";
+        } else {
+          maps[i].variable = qnsnow;
+          maps[i].longi = xlong;
+          maps[i].lat = xlat;
+        }
         break;
       case QRAIN:
-        maps[i].name = "QRAIN";
-        maps[i].out_name = "QRAIN";
-        maps[i].variable = qrain;
-        maps[i].longi = xlong;
-        maps[i].lat = xlat;
+        if (initial) {
+          maps[i].name = "QRAIN";
+          maps[i].out_name = "QRAIN";
+        } else {
+          maps[i].variable = qrain;
+          maps[i].longi = xlong;
+          maps[i].lat = xlat;
+        }
         break;
       case QSNOW:
-        maps[i].name = "QSNOW";
-        maps[i].out_name = "QSNOW";
-        maps[i].variable = qsnow;
-        maps[i].longi = xlong;
-        maps[i].lat = xlat;
+        if (initial) {
+          maps[i].name = "QSNOW";
+          maps[i].out_name = "QSNOW";
+        } else {
+          maps[i].variable = qsnow;
+          maps[i].longi = xlong;
+          maps[i].lat = xlat;
+        }
         break;
       case QVAPOR:
-        maps[i].name = "QVAPOR";
-        maps[i].out_name = "QVAPOR";
-        maps[i].variable = qvapor;
-        maps[i].longi = xlong;
-        maps[i].lat = xlat;
+        if (initial) {
+          maps[i].name = "QVAPOR";
+          maps[i].out_name = "QVAPOR";
+        } else {
+          maps[i].variable = qvapor;
+          maps[i].longi = xlong;
+          maps[i].lat = xlat;
+        }
         break;
       case SH2O:
-        maps[i].name = "SH2O";
-        maps[i].out_name = "SH2O";
-        maps[i].variable = sh2o;
-        maps[i].longi = xlong;
-        maps[i].lat = xlat;
+        if (initial) {
+          maps[i].name = "SH2O";
+          maps[i].out_name = "SH2O";
+        } else {
+          maps[i].variable = sh2o;
+          maps[i].longi = xlong;
+          maps[i].lat = xlat;
+        }
         break;
       case SMCREL:
-        maps[i].name = "SMCREL";
-        maps[i].out_name = "SMCREL";
-        maps[i].variable = smcrel;
-        maps[i].longi = xlong;
-        maps[i].lat = xlat;
+        if (initial) {
+          maps[i].name = "SMCREL";
+          maps[i].out_name = "SMCREL";
+        } else {
+          maps[i].variable = smcrel;
+          maps[i].longi = xlong;
+          maps[i].lat = xlat;
+        }
         break;
       case SMOIS:
-        maps[i].name = "SMOIS";
-        maps[i].out_name = "SMOIS";
-        maps[i].variable = smois;
-        maps[i].longi = xlong;
-        maps[i].lat = xlat;
+        if (initial) {
+          maps[i].name = "SMOIS";
+          maps[i].out_name = "SMOIS";
+        } else {
+          maps[i].variable = smois;
+          maps[i].longi = xlong;
+          maps[i].lat = xlat;
+        }
         break;
       case T:
-        maps[i].name = "T";
-        maps[i].out_name = "PERT_T";
-        maps[i].variable = t;
-        maps[i].longi = xlong;
-        maps[i].lat = xlat;
+        if (initial) {
+          maps[i].name = "T";
+          maps[i].out_name = "PERT_T";
+        } else {
+          maps[i].variable = t;
+          maps[i].longi = xlong;
+          maps[i].lat = xlat;
+        }
         break;
       case TSLB:
-        maps[i].name = "TSLB";
-        maps[i].out_name = "TSLB";
-        maps[i].variable = tslb;
-        maps[i].longi = xlong;
-        maps[i].lat = xlat;
+        if (initial) {
+          maps[i].name = "TSLB";
+          maps[i].out_name = "TSLB";
+        } else {
+          maps[i].variable = tslb;
+          maps[i].longi = xlong;
+          maps[i].lat = xlat;
+        }
         break;
       case U:
-        maps[i].name = "U";
-        maps[i].out_name = "U";
-        maps[i].variable = u;
-        maps[i].mass_variable = t;
-        maps[i].longi = xlong_u;
-        maps[i].lat = xlat_u;
-        maps[i].mass_longi = xlong;
-        maps[i].mass_lat = xlat;
+        if (initial) {
+          maps[i].name = "U";
+          maps[i].out_name = "U";
+        } else {
+          maps[i].variable = u;
+          maps[i].mass_variable = t;
+          maps[i].longi = xlong_u;
+          maps[i].lat = xlat_u;
+          maps[i].mass_longi = xlong;
+          maps[i].mass_lat = xlat;
+        }
         break;
       case V:
-        maps[i].name = "V";
-        maps[i].out_name = "V";
-        maps[i].variable = v;
-        maps[i].mass_variable = t;
-        maps[i].longi = xlong_v;
-        maps[i].lat = xlat_v;
-        maps[i].mass_longi = xlong;
-        maps[i].mass_lat = xlat;
+        if (initial) {
+          maps[i].name = "V";
+          maps[i].out_name = "V";
+        } else {
+          maps[i].variable = v;
+          maps[i].mass_variable = t;
+          maps[i].longi = xlong_v;
+          maps[i].lat = xlat_v;
+          maps[i].mass_longi = xlong;
+          maps[i].mass_lat = xlat;
+        }
         break;
       case W:
-        maps[i].name = "W";
-        maps[i].out_name = "W";
-        maps[i].variable = w;
-        maps[i].longi = xlong;
-        maps[i].lat = xlat;
+        if (initial) {
+          maps[i].name = "W";
+          maps[i].out_name = "W";
+        } else {
+          maps[i].variable = w;
+          maps[i].longi = xlong;
+          maps[i].lat = xlat;
+        }
         break;
       case PRESSURE:
-        maps[i].name = "PRESSURE";
-        maps[i].out_name = "PRESSURE";
-        maps[i].variable = pressure;
-        maps[i].longi = xlong;
-        maps[i].lat = xlat;
+        if (initial) {
+          maps[i].name = "PRESSURE";
+          maps[i].out_name = "PRESSURE";
+        } else {
+          maps[i].variable = pressure;
+          maps[i].longi = xlong;
+          maps[i].lat = xlat;
+        }
         break;
       case COR_EAST:
-        maps[i].name = "COR_EAST";
-        maps[i].out_name = "COR_EAST";
-        maps[i].variable = cor_east;
-        maps[i].longi = xlong;
-        maps[i].lat = xlat;
+        if (initial) {
+          maps[i].name = "COR_EAST";
+          maps[i].out_name = "COR_EAST";
+        } else {
+          maps[i].variable = cor_east;
+          maps[i].longi = xlong;
+          maps[i].lat = xlat;
+        }
         break;
       case COR_NORTH:
-        maps[i].name = "COR_NORTH";
-        maps[i].out_name = "COR_NORTH";
-        maps[i].variable = cor_north;
-        maps[i].longi = xlong;
-        maps[i].lat = xlat;
+        if (initial) {
+          maps[i].name = "COR_NORTH";
+          maps[i].out_name = "COR_NORTH";
+        } else {
+          maps[i].variable = cor_north;
+          maps[i].longi = xlong;
+          maps[i].lat = xlat;
+        }
         break;
       case GEOPOTENTIAL:
-        maps[i].name = "GEOPOTENTIAL";
-        maps[i].out_name = "GEOPOT";
-        maps[i].variable = geopotential;
-        maps[i].longi = xlong;
-        maps[i].lat = xlat;
+        if (initial) {
+          maps[i].name = "GEOPOTENTIAL";
+          maps[i].out_name = "GEOPOT";
+        } else {
+          maps[i].variable = geopotential;
+          maps[i].longi = xlong;
+          maps[i].lat = xlat;
+        }
         break;
       case COR_PARAM:
-        maps[i].name = "COR_PARAM";
-        maps[i].out_name = "COR_PARAM";
-        maps[i].variable = cor_param;
-        maps[i].longi = xlong;
-        maps[i].lat = xlat;
+        if (initial) {
+          maps[i].name = "COR_PARAM";
+          maps[i].out_name = "COR_PARAM";
+        } else {
+          maps[i].variable = cor_param;
+          maps[i].longi = xlong;
+          maps[i].lat = xlat;
+        }
         break;
       case ABS_VERT_VORT:
-        maps[i].name = "ABS_VERT_VORT";
-        maps[i].out_name = "ABS_VERT_VORT";
-        maps[i].variable = abs_vert_vort;
-        maps[i].longi = xlong;
-        maps[i].lat = xlat;
+        if (initial) {
+          maps[i].name = "ABS_VERT_VORT";
+          maps[i].out_name = "ABS_VERT_VORT";
+        } else {
+          maps[i].variable = abs_vert_vort;
+          maps[i].longi = xlong;
+          maps[i].lat = xlat;
+        }
         break;
     }
   }
@@ -465,25 +594,83 @@ void set_maps_active(map *maps) {
   }
 }
 
+// ----------------------------------------------------------------------------------------
+// This routine checks dependency between variables, i.e. it makes sure that variables are
+// computed in the right order if there is a dependency between them.
+// It may seeem not really needed since the order to compute the variables is currenhtly
+// hard coded. However this routine will be usefull when we will load what to compute from
+// an exteral source in which the order may be arbitrary difined.
+// ----------------------------------------------------------------------------------------
 void check_depedencies(map *maps) {
 
-  if (maps[COR_EAST].active) {
-    if(!maps[V].active) {
-      fprintf(stderr, "Coriolis-East is active but missing y-wind.\n");
-      exit(EXIT_FAILURE);
-    }
-  }
-  if (maps[COR_NORTH].active) {
-    if(!maps[U].active) {
-      fprintf(stderr, "Coriolis-North is active but missing x-wind.\n");
-      exit(EXIT_FAILURE);
-    }
+  if (!maps[COR_EAST].active && !maps[COR_NORTH].active && !maps[ABS_VERT_VORT].active &&
+      !maps[GEOPOTENTIAL].active) {
+        return; // Nothing to do
   }
 
-  if (maps[GEOPOTENTIAL].active) {
-    if (!maps[PH].active || !maps[PHB].active) {
-      fprintf(stderr, "Full geopotential is active but missing base state or perturbation geopotential.\n");
-      exit(EXIT_FAILURE);
+  // Get the position in the map of U, V, PH and PHB
+  int u_idx = -1;
+  int v_idx = -1;
+  int ph_idx = -1;
+  int phb_idx = -1;
+  for (int i = 0; i < NUM_VARIABLES; i++) {
+    if (strcmp(maps[i].name, "U") == 0) u_idx = i;
+    if (strcmp(maps[i].name, "V") == 0) v_idx = i;
+    if (strcmp(maps[i].name, "PH") == 0) ph_idx = i;
+    if (strcmp(maps[i].name, "PHB") == 0) phb_idx = i;
+  }
+
+  bool failure = false;
+  if (maps[COR_EAST].active && v_idx < 0) failure = true;
+  if (maps[COR_NORTH].active && u_idx < 0) failure = true;
+  if (maps[ABS_VERT_VORT].active && (u_idx < 0 || v_idx < 0)) failure = true;
+  if (maps[GEOPOTENTIAL].active && (ph_idx < 0 || phb_idx < 0)) failure = true;
+  if (failure) {
+    fprintf(stderr, "Dependency check failure due to wrong map. A dependent vartiable is computed but ",
+                     "its needed variable is not defined in the map.\n");
+  }
+
+  for (int i = 0; i < NUM_VARIABLES; i++) {
+    if (strcmp(maps[i].name, "COR_EAST") == 0 && maps[i].active) {
+      if (i < v_idx) {
+        fprintf(stderr, "ERROR: variable %s being defined too early in the maps so will be compued before V.\n",
+                maps[i].name);
+        exit(EXIT_FAILURE);
+      }
+    }
+
+    if (strcmp(maps[i].name, "COR_NORTH") == 0 && maps[i].active) {
+      if (i < u_idx) {
+        fprintf(stderr, "ERROR: variable %s being defined too early in the maps so will be compued before U.\n",
+                maps[i].name);
+        exit(EXIT_FAILURE);
+      }
+    }
+
+    if (strcmp(maps[i].name, "ABS_VERT_VORT") == 0 && maps[i].active) {
+      if (i < u_idx) {
+        fprintf(stderr, "ERROR: variable %s being defined too early in the maps so will be compued before U.\n",
+                maps[i].name);
+        exit(EXIT_FAILURE);
+      }
+      if (i < v_idx) {
+        fprintf(stderr, "ERROR: variable %s being defined too early in the maps so will be compued before V.\n",
+                maps[i].name);
+        exit(EXIT_FAILURE);
+      }
+    }
+
+    if (strcmp(maps[i].name, "GEOPOTENTIAL") == 0 && maps[i].active) {
+      if (i < ph_idx) {
+        fprintf(stderr, "ERROR: variable %s being defined too early in the maps so will be compued before PH.\n",
+                maps[i].name);
+        exit(EXIT_FAILURE);
+      }
+      if (i < phb_idx) {
+        fprintf(stderr, "ERROR: variable %s being defined too early in the maps so will be compued before PHB.\n",
+                maps[i].name);
+        exit(EXIT_FAILURE);
+      }
     }
   }
 }
@@ -491,14 +678,20 @@ void check_depedencies(map *maps) {
 int check_maps(map *maps) {
   int status = 0;
   for (int i = 0; i < NUM_VARIABLES; i++) {
+    if (maps[i].name == NULL) {
+      fprintf(stderr, "Name field not defined in mapping - Error at loop index: %d.\n", i);
+      status = -1;
+    }
+  }
+
+  for (int i = 0; i < NUM_VARIABLES; i++) {
     if (strcmp(maps[i].name, "XLAT")    == 0 || strcmp(maps[i].name, "XLAT_U")  == 0 ||
         strcmp(maps[i].name, "XLAT_V")  == 0 || strcmp(maps[i].name, "XLONG")   == 0 ||
         strcmp(maps[i].name, "XLONG_U") == 0 || strcmp(maps[i].name, "XLONG_V") == 0)
            continue;
 
-    if (maps[i].name == NULL || maps[i].out_name == NULL || maps[i].variable == NULL ||
-        maps[i].longi == NULL || maps[i].lat == NULL) {
-      fprintf(stderr, "NULL pointer in mapping for variable %s.\n", maps[i].name);
+    if (maps[i].out_name == NULL) {
+      fprintf(stderr, "Output name field not defined in mapping for variable: %s.\n", maps[i].name);
       status = -1;
     }
   }
@@ -520,7 +713,7 @@ void get_files_from_dir(const char *directory, char files[][MAX_STRING_LENGTH], 
   closedir(d);
 }
 
-int load_variable(int ncid, const char *var_name, tensor * t) {
+int load_variable(int ncid, const char *var_name, tensor * t, bool active, bool used) {
 
   int retval = 0;
   int varid;
@@ -548,6 +741,9 @@ int load_variable(int ncid, const char *var_name, tensor * t) {
     return retval;
   }
   if (strcmp(var_name, "ABS_VERT_VORT") == 0) {
+    return retval;
+  }
+  if (!active && !used) {
     return retval;
   }
 
@@ -1900,6 +2096,8 @@ int process(char files[][MAX_STRING_LENGTH], uint num_files, bool no_interpol_ou
   // Error handling
   int retval;
 
+  static bool first_time = false;
+
 // ---------------------------------------------------------------
   for (int i = 0; i < num_files; i++) {
 // ---------------------------------------------------------------
@@ -1922,87 +2120,132 @@ int process(char files[][MAX_STRING_LENGTH], uint num_files, bool no_interpol_ou
     fprintf(stdout, "Nb Dimension:Nb Variables:Nb attributes:id of the unlimited dimensions: %d %d %d %d\n", ndims_in, nvars_in,
         ngatts_in, unlimited_in);
 
+    if (!first_time) {
+      set_maps(maps, true);
+      if (check_maps(maps) != 0) {
+        exit(EXIT_FAILURE);
+      }
+
+      set_maps_active(maps);
+      check_depedencies(maps);
+      first_time = true;
+    }
+
     uint shape[4];
     uint rank;
+
+    // -------------------------------------------------------------------------
+    // Tensors allocation, znu, znw, the latitude and longitude (on both grids),
+    // and the velocities are always allocated
+    // -------------------------------------------------------------------------
 
     shape[0] = NT; shape[1] = NZ;
     rank = 2;
     znu = allocate_tensor(shape, rank);
+    if (!maps[ZNU].active) maps[ZNU].used = true;
+
     shape[1] = NZ_STAG;
     znw = allocate_tensor(shape, rank);
+    if (!maps[ZNW].active) maps[ZNW].used = true;
 
     shape[0] = NT; shape[1] = NY; shape[2] = NX;
     rank = 3;
     xlat  = allocate_tensor(shape, rank);
     xlong = allocate_tensor(shape, rank);
+    if (!maps[XLAT].active) maps[XLAT].used = true;
+    if (!maps[XLONG].active) maps[XLONG].used = true;
 
     shape[0] = NT; shape[1] = NY; shape[2] = NX_STAG;
     xlat_u  = allocate_tensor(shape, rank);
     xlong_u = allocate_tensor(shape, rank);
+    if (!maps[XLAT_U].active) maps[XLAT_U].used = true;
+    if (!maps[XLONG_U].active) maps[XLONG_U].used = true;
 
     shape[0] = NT; shape[1] = NY_STAG; shape[2] = NX;
     xlat_v  = allocate_tensor(shape, rank);
     xlong_v = allocate_tensor(shape, rank);
+    if (!maps[XLAT_V].active) maps[XLAT_V].used = true;
+    if (!maps[XLONG_V].active) maps[XLONG_V].used = true;
 
     shape[0] = NT; shape[1] = NY; shape[2] = NX;
-    sst = allocate_tensor(shape, rank);
-    olr = allocate_tensor(shape, rank);
+    if (maps[SST].active) sst = allocate_tensor(shape, rank);
+    if (maps[OLR].active) olr = allocate_tensor(shape, rank);
 
-    mu = allocate_tensor(shape, rank);
-    mub = allocate_tensor(shape, rank);
-    dry_mass = allocate_tensor(shape, rank);
+    if (maps[MU].active || maps[DRY_MASS].active) {
+      mu = allocate_tensor(shape, rank);
+      if (!maps[MU].active) maps[MU].used = true;
+    }
+    if (maps[MUB].active || maps[DRY_MASS].active) {
+      mub = allocate_tensor(shape, rank);
+      if (!maps[MUB].active) maps[MUB].used = true;
+    }
+    if (maps[DRY_MASS].active) dry_mass = allocate_tensor(shape, rank);
 
     shape[0] = NT; shape[1] = NZ; shape[2] = NY; shape[3] = NX;
     rank = 4;
-    cldfra        = allocate_tensor(shape, rank);
-    p             = allocate_tensor(shape, rank);
-    pb            = allocate_tensor(shape, rank);
-    phyd          = allocate_tensor(shape, rank);
-    qcloud        = allocate_tensor(shape, rank);
-    qgraup        = allocate_tensor(shape, rank);
-    qice          = allocate_tensor(shape, rank);
-    qngraupel     = allocate_tensor(shape, rank);
-    qnice         = allocate_tensor(shape, rank);
-    qnrain        = allocate_tensor(shape, rank);
-    qnsnow        = allocate_tensor(shape, rank);
-    qrain         = allocate_tensor(shape, rank);
-    qsnow         = allocate_tensor(shape, rank);
-    qvapor        = allocate_tensor(shape, rank);
-    t             = allocate_tensor(shape, rank);
-    pressure      = allocate_tensor(shape, rank);
-    cor_east      = allocate_tensor(shape, rank);
-    cor_north     = allocate_tensor(shape, rank);
-    geopotential  = allocate_tensor(shape, rank);
-    cor_param     = allocate_tensor(shape, rank);
-    abs_vert_vort = allocate_tensor(shape, rank);
+    if (maps[CLDFRA].active)                      cldfra        = allocate_tensor(shape, rank);
+
+    if (maps[P].active || maps[PRESSURE].active) {
+      p = allocate_tensor(shape, rank);
+      if (!maps[P].active) maps[P].used = true;
+    }
+    if (maps[PB].active || maps[PRESSURE].active) {
+      pb = allocate_tensor(shape, rank);
+      if (!maps[PB].active) maps[PB].used = true;
+    }
+
+    if (maps[P_HYD].active)                       phyd          = allocate_tensor(shape, rank);
+    if (maps[QCLOUD].active)                      qcloud        = allocate_tensor(shape, rank);
+    if (maps[QGRAUP].active)                      qgraup        = allocate_tensor(shape, rank);
+    if (maps[QICE].active)                        qice          = allocate_tensor(shape, rank);
+    if (maps[QNGRAUPEL].active)                   qngraupel     = allocate_tensor(shape, rank);
+    if (maps[QNICE].active)                       qnice         = allocate_tensor(shape, rank);
+    if (maps[QNRAIN].active)                      qnrain        = allocate_tensor(shape, rank);
+    if (maps[QNSNOW].active)                      qnsnow        = allocate_tensor(shape, rank);
+    if (maps[QRAIN].active)                       qrain         = allocate_tensor(shape, rank);
+    if (maps[QSNOW].active)                       qsnow         = allocate_tensor(shape, rank);
+    if (maps[QVAPOR].active)                      qvapor        = allocate_tensor(shape, rank);
+    if (maps[T].active)                           t             = allocate_tensor(shape, rank);
+    if (maps[PRESSURE].active)                    pressure      = allocate_tensor(shape, rank);
+    if (maps[COR_EAST].active)                    cor_east      = allocate_tensor(shape, rank);
+    if (maps[COR_NORTH].active)                   cor_north     = allocate_tensor(shape, rank);
+    if (maps[GEOPOTENTIAL].active)                geopotential  = allocate_tensor(shape, rank);
+    if (maps[COR_PARAM].active)                   cor_param     = allocate_tensor(shape, rank);
+    if (maps[ABS_VERT_VORT].active)               abs_vert_vort = allocate_tensor(shape, rank);
 
     shape[1] = NZ_STAG;
-    ph    = allocate_tensor(shape, rank);
-    phb   = allocate_tensor(shape, rank);
-    w     = allocate_tensor(shape, rank);
+    if (maps[PH].active || maps[GEOPOTENTIAL].active) {
+      ph = allocate_tensor(shape, rank);
+      if (!maps[PH].active) maps[PH].used = true;
+    }
+    if (maps[PHB].active || maps[GEOPOTENTIAL].active) {
+      phb = allocate_tensor(shape, rank);
+      if (!maps[PHB].active) maps[PHB].used = true;
+    }
+
+    w = allocate_tensor(shape, rank);
+    if (!maps[W].active) maps[W].used = true;
 
     shape[1] = NZ_SOIL_STAG;
-    sh2o   = allocate_tensor(shape, rank);
-    smcrel = allocate_tensor(shape, rank);
-    smois  = allocate_tensor(shape, rank);
-    tslb   = allocate_tensor(shape, rank);
+    if (maps[SH2O].active)   sh2o   = allocate_tensor(shape, rank);
+    if (maps[SMCREL].active) smcrel = allocate_tensor(shape, rank);
+    if (maps[SMOIS].active)  smois  = allocate_tensor(shape, rank);
+    if (maps[TSLB].active)   tslb   = allocate_tensor(shape, rank);
 
     shape[0] = NT; shape[1] = NZ; shape[2] = NY; shape[3] = NX_STAG;
     u       = allocate_tensor(shape, rank);
+    if (!maps[U].active) maps[U].used = true;
 
     shape[0] = NT; shape[1] = NZ; shape[2] = NY_STAG; shape[3] = NX;
     v       = allocate_tensor(shape, rank);
+    if (!maps[V].active) maps[V].used = true;
 
-    set_maps(maps);
-    if (check_maps(maps) != 0) {
-      exit(EXIT_FAILURE);
-    }
-    set_maps_active(maps);
-    check_depedencies(maps);
+    set_maps(maps, false);
 
     // Load the variables into memory
     for (int i = 0; i < NUM_VARIABLES; i++) {
-      if ((retval = load_variable(ncid, maps[i].name, maps[i].variable))) {
+      if ((retval = load_variable(ncid, maps[i].name, maps[i].variable, maps[i].active,
+           maps[i].used))) {
           ERR(retval);
         }
     }
@@ -2015,7 +2258,7 @@ int process(char files[][MAX_STRING_LENGTH], uint num_files, bool no_interpol_ou
     }
 
     // If required, compute the full pressure here
-    {
+    if (maps[PRESSURE].active) {
       float *p = maps[P].variable->val;
       float *pb = maps[PB].variable->val;
       float *pressure = maps[PRESSURE].variable->val;
@@ -2038,7 +2281,7 @@ int process(char files[][MAX_STRING_LENGTH], uint num_files, bool no_interpol_ou
     }
 
     // If required, compute the full dry air mass here
-    {
+    if (maps[DRY_MASS].active) {
       float *dry_mass = maps[DRY_MASS].variable->val;
       float *mu = maps[MU].variable->val;
       float *mub = maps[MUB].variable->val;
@@ -2047,8 +2290,6 @@ int process(char files[][MAX_STRING_LENGTH], uint num_files, bool no_interpol_ou
       uint ny = 0;
 
       get_horizontal_dims(DRY_MASS, &nx, &ny);
-
-      int num_layers = 1;
 
       for (int y = 0; y < ny; y++) {
         for (int x = 0; x < nx; x++) {
@@ -2434,41 +2675,44 @@ int process(char files[][MAX_STRING_LENGTH], uint num_files, bool no_interpol_ou
     deallocate_tensor(xlong_u);
     deallocate_tensor(xlat_v);
     deallocate_tensor(xlong_v);
-    deallocate_tensor(sst);
-    deallocate_tensor(mu);
-    deallocate_tensor(mub);
-    deallocate_tensor(dry_mass);
-    deallocate_tensor(olr);
-    deallocate_tensor(cldfra);
-    deallocate_tensor(p);
-    deallocate_tensor(pb);
-    deallocate_tensor(ph);
-    deallocate_tensor(phb);
-    deallocate_tensor(phyd);
-    deallocate_tensor(qcloud);
-    deallocate_tensor(qgraup);
-    deallocate_tensor(qice);
-    deallocate_tensor(qngraupel);
-    deallocate_tensor(qnice);
-    deallocate_tensor(qnrain);
-    deallocate_tensor(qnsnow);
-    deallocate_tensor(qrain);
-    deallocate_tensor(qsnow);
-    deallocate_tensor(qvapor);
-    deallocate_tensor(sh2o);
-    deallocate_tensor(smcrel);
-    deallocate_tensor(smois);
-    deallocate_tensor(t);
-    deallocate_tensor(tslb);
+
+    if (sst != NULL)       deallocate_tensor(sst);
+    if (mu != NULL)        deallocate_tensor(mu);
+    if (mub != NULL)       deallocate_tensor(mub);
+    if (dry_mass != NULL)  deallocate_tensor(dry_mass);
+    if (olr != NULL)       deallocate_tensor(olr);
+    if (cldfra != NULL)    deallocate_tensor(cldfra);
+    if (p != NULL)         deallocate_tensor(p);
+    if (pb != NULL)        deallocate_tensor(pb);
+    if (ph != NULL)        deallocate_tensor(ph);
+    if (phb != NULL)       deallocate_tensor(phb);
+    if (phyd != NULL)      deallocate_tensor(phyd);
+    if (qcloud != NULL)    deallocate_tensor(qcloud);
+    if (qgraup != NULL)    deallocate_tensor(qgraup);
+    if (qice != NULL)      deallocate_tensor(qice);
+    if (qngraupel != NULL) deallocate_tensor(qngraupel);
+    if (qnice != NULL)     deallocate_tensor(qnice);
+    if (qnrain != NULL)    deallocate_tensor(qnrain);
+    if (qnsnow != NULL)    deallocate_tensor(qnsnow);
+    if (qrain != NULL)     deallocate_tensor(qrain);
+    if (qsnow != NULL)     deallocate_tensor(qsnow);
+    if (qvapor != NULL)    deallocate_tensor(qvapor);
+    if (sh2o != NULL)      deallocate_tensor(sh2o);
+    if (smcrel != NULL)    deallocate_tensor(smcrel);
+    if (smois != NULL)     deallocate_tensor(smois);
+    if (t != NULL)         deallocate_tensor(t);
+    if (tslb != NULL)      deallocate_tensor(tslb);
+
     deallocate_tensor(u);
     deallocate_tensor(v);
     deallocate_tensor(w);
-    deallocate_tensor(pressure);
-    deallocate_tensor(cor_east);
-    deallocate_tensor(cor_north);
-    deallocate_tensor(geopotential);
-    deallocate_tensor(cor_param);
-    deallocate_tensor(abs_vert_vort);
+
+    if (pressure != NULL)       deallocate_tensor(pressure);
+    if (cor_east != NULL)      deallocate_tensor(cor_east);
+    if (cor_north != NULL)     deallocate_tensor(cor_north);
+    if (geopotential != NULL)  deallocate_tensor(geopotential);
+    if (cor_param != NULL)     deallocate_tensor(cor_param);
+    if (abs_vert_vort != NULL) deallocate_tensor(abs_vert_vort);
 
     if (domain_tags != NULL) {
       free(domain_tags);

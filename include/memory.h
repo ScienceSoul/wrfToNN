@@ -27,7 +27,8 @@ typedef struct map {
   tensor *mass_lat;
   float *buffer1;
   float *buffer2;
-  bool active;
+  bool active;    // If true, the variable is output
+  bool used;      // If true, the variale is only loaded but not output
 } map;
 
 tensor *allocate_tensor(uint *shape, uint rank);

@@ -75,7 +75,7 @@ typedef enum variables_code {
     SST,       // Sea surface temperature
     MU,        // Perturbation dry air mass in column
     MUB,       // Base state dry air mass in column
-    DRY_MASS,  // The full dry air mass in column
+    DRY_MASS,  // The full dry air mass in column = MU + MUB
     OLR,       // TOA outgoing long wave
     //-----------------------------------
 
@@ -130,10 +130,10 @@ const char *active_flags[] = {"ZNU:1",
                               "DRY_MASS:1",
                               "OLR:0",
                               "CLDFRA:0",
-                              "P:1",
-                              "PB:1",
-                              "PH:1",
-                              "PHB:1",
+                              "P:0",
+                              "PB:0",
+                              "PH:0",
+                              "PHB:0",
                               "P_HYD:1",
                               "QCLOUD:0",
                               "QGRAUP:0",

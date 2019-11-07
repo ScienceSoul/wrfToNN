@@ -45,6 +45,7 @@ map *allocate_maps(int num_variables) {
     m[i].buffer1 = NULL;
     m[i].buffer2 = NULL;
     m[i].active = false;
+    m[i].used = false;
   }
   return m;
 }
