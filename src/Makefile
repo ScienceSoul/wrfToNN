@@ -21,7 +21,7 @@ endif
 ifeq ($(PLATEFORM),Darwin)
 	CFLAGS = -Wall -Ofast
 else
-	CFLAGS = -O3 -Xptxas -v
+	CFLAGS = -g #-O3 -Xptxas -v
 endif
 
 ifeq ($(PLATEFORM),Darwin)

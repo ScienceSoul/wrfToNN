@@ -84,6 +84,7 @@ tensor *cor_north     = NULL;
 tensor *geopotential  = NULL;
 tensor *cor_param     = NULL;
 tensor *abs_vert_vort = NULL;
+tensor *rel_vert_vort = NULL;
 // ------------------------------------------------------
 
 // ------------------------------------------------------
@@ -113,8 +114,11 @@ fd_tags *domain_tags = NULL;
   velo_grid *h_pert_geopot_grid = NULL;
   velo_grid *d_pert_geopot_grid = NULL;
 
-  fd_container *h_vorticity = NULL;
-  fd_container *d_vorticity = NULL;
+  fd_container *h_abs_vert_vort = NULL;
+  fd_container *d_abs_vert_vort = NULL;
+
+  fd_container *h_rel_vert_vort = NULL;
+  fd_container *d_rel_vert_vort = NULL;
 #endif
 // ------------------------------------------------------
 
@@ -559,6 +563,16 @@ void set_maps(map *maps, bool initial) {
           maps[i].lat = xlat;
         }
         break;
+      case REL_VERT_VORT:
+        if (initial) {
+          maps[i].name = "REL_VERT_VORT";
+          maps[i].out_name = "REL_VERT_VORT";
+        } else {
+          maps[i].variable = rel_vert_vort;
+          maps[i].longi = xlong;
+          maps[i].lat = xlat;
+        }
+        break;
     }
   }
 }
@@ -599,7 +613,8 @@ void set_maps_active(map *maps) {
 // computed in the right order if there is a dependency between them.
 // It may seeem not really needed since the order to compute the variables is currenhtly
 // hard coded. However this routine will be usefull when we will load what to compute from
-// an exteral source in which the order may be arbitrary difined.
+// an exteral source in which the order may be arbitrary defined.
+// NOTE: EXPERIMENTAL
 // ----------------------------------------------------------------------------------------
 void check_depedencies(map *maps) {
 
@@ -608,7 +623,7 @@ void check_depedencies(map *maps) {
         return; // Nothing to do
   }
 
-  // Get the position in the map of U, V, PH and PHB
+  // Get the position in the map of U, V, PH, PHB and ABS_VERT_VORT
   int u_idx = -1;
   int v_idx = -1;
   int ph_idx = -1;
@@ -633,7 +648,7 @@ void check_depedencies(map *maps) {
   for (int i = 0; i < NUM_VARIABLES; i++) {
     if (strcmp(maps[i].name, "COR_EAST") == 0 && maps[i].active) {
       if (i < v_idx) {
-        fprintf(stderr, "ERROR: variable %s being defined too early in the maps so will be compued before V.\n",
+        fprintf(stderr, "ERROR: variable %s being defined too early in the maps so will be computed before V.\n",
                 maps[i].name);
         exit(EXIT_FAILURE);
       }
@@ -641,7 +656,7 @@ void check_depedencies(map *maps) {
 
     if (strcmp(maps[i].name, "COR_NORTH") == 0 && maps[i].active) {
       if (i < u_idx) {
-        fprintf(stderr, "ERROR: variable %s being defined too early in the maps so will be compued before U.\n",
+        fprintf(stderr, "ERROR: variable %s being defined too early in the maps so will be computed before U.\n",
                 maps[i].name);
         exit(EXIT_FAILURE);
       }
@@ -649,12 +664,12 @@ void check_depedencies(map *maps) {
 
     if (strcmp(maps[i].name, "ABS_VERT_VORT") == 0 && maps[i].active) {
       if (i < u_idx) {
-        fprintf(stderr, "ERROR: variable %s being defined too early in the maps so will be compued before U.\n",
+        fprintf(stderr, "ERROR: variable %s being defined too early in the maps so will be computed before U.\n",
                 maps[i].name);
         exit(EXIT_FAILURE);
       }
       if (i < v_idx) {
-        fprintf(stderr, "ERROR: variable %s being defined too early in the maps so will be compued before V.\n",
+        fprintf(stderr, "ERROR: variable %s being defined too early in the maps so will be computed before V.\n",
                 maps[i].name);
         exit(EXIT_FAILURE);
       }
@@ -662,12 +677,12 @@ void check_depedencies(map *maps) {
 
     if (strcmp(maps[i].name, "GEOPOTENTIAL") == 0 && maps[i].active) {
       if (i < ph_idx) {
-        fprintf(stderr, "ERROR: variable %s being defined too early in the maps so will be compued before PH.\n",
+        fprintf(stderr, "ERROR: variable %s being defined too early in the maps so will be computed before PH.\n",
                 maps[i].name);
         exit(EXIT_FAILURE);
       }
       if (i < phb_idx) {
-        fprintf(stderr, "ERROR: variable %s being defined too early in the maps so will be compued before PHB.\n",
+        fprintf(stderr, "ERROR: variable %s being defined too early in the maps so will be computed before PHB.\n",
                 maps[i].name);
         exit(EXIT_FAILURE);
       }
@@ -741,6 +756,9 @@ int load_variable(int ncid, const char *var_name, tensor * t, bool active, bool 
     return retval;
   }
   if (strcmp(var_name, "ABS_VERT_VORT") == 0) {
+    return retval;
+  }
+  if (strcmp(var_name, "REL_VERT_VORT") == 0) {
     return retval;
   }
   if (!active && !used) {
@@ -1272,7 +1290,8 @@ void interpolate_wind_velo_horiz(map *maps, int idx, int z, char file[][MAX_STRI
       }
     }
 
-    // If the absolute vertical vorticity, store here the interpolated velocities
+    // If the absolute/relative vertical vorticity is computed, store here
+    // the interpolated velocities
     if (maps[ABS_VERT_VORT].active) {
       uint nx = 0;
       uint ny = 0;
@@ -1284,6 +1303,20 @@ void interpolate_wind_velo_horiz(map *maps, int idx, int z, char file[][MAX_STRI
           float v_val = h_mass_grid->v[(y*nx)+x];
           maps[ABS_VERT_VORT].buffer1[(z*(ny*nx))+((y*nx)+x)] = u_val;
           maps[ABS_VERT_VORT].buffer2[(z*(ny*nx))+((y*nx)+x)] = v_val;
+        }
+      }
+    }
+    if (maps[REL_VERT_VORT].active) {
+      uint nx = 0;
+      uint ny = 0;
+      get_horizontal_dims(REL_VERT_VORT, &nx, &ny);
+
+      for (int y = 0; y < ny; y++) {
+        for (int x = 0; x <nx; x++) {
+          float u_val = h_mass_grid->u[(y*nx)+x];
+          float v_val = h_mass_grid->v[(y*nx)+x];
+          maps[REL_VERT_VORT].buffer1[(z*(ny*nx))+((y*nx)+x)] = u_val;
+          maps[REL_VERT_VORT].buffer2[(z*(ny*nx))+((y*nx)+x)] = v_val;
         }
       }
     }
@@ -1567,13 +1600,13 @@ void interpolate_var_vert(velo_grid *h_var_grid, map *maps, int idx, int z, char
 }
 
 #ifdef __NVCC__
-void compute_vorticity(fd_container *h_vorticity, fd_container *d_vorticity, map *maps, int idx,
+void compute_vert_vorticity(fd_container *h_vorticity, fd_container *d_vorticity, map *maps, int idx,
   int z, char file[][MAX_STRING_LENGTH], char file_nn[][MAX_STRING_LENGTH], dim3 block, dim3 grid,
-  int grid_type, feature_scaling_pt feature_scaling_func) {
+  int grid_type, feature_scaling_pt feature_scaling_func, bool absolute) {
 #else
-void compute_vorticity(fd__container *h_vorticity, map *maps, int idx, int z, char file[][MAX_STRING_LENGTH],
+void compute_vert_vorticity(fd__container *h_vorticity, map *maps, int idx, int z, char file[][MAX_STRING_LENGTH],
   char file_nn[][MAX_STRING_LENGTH], float **buffer, int grid_typeinterpolate_var_vert,
-  feature_scaling_pt feature_scaling_func) {
+  feature_scaling_pt feature_scaling_func, bool absolute) {
 #endif
 
     if (grid_type == UNSTRUCTURED) {
@@ -1599,7 +1632,11 @@ void compute_vorticity(fd__container *h_vorticity, map *maps, int idx, int z, ch
     }
 
     double i_start = cpu_second();
-    gpu_compute_ref_vert_vort<<<grid, block>>>(d_vorticity, NY, NX, DY, DX);
+    if (absolute) {
+      gpu_compute_abs_vert_vort<<<grid, block>>>(d_vorticity, NY, NX, DY, DX);
+    } else {
+      gpu_compute_rel_vert_vort<<<grid, block>>>(d_vorticity, NY, NX, DY, DX);
+    }
 
     cudaDeviceSynchronize();
     double i_elaps = cpu_second() - i_start;
@@ -1826,14 +1863,16 @@ int write_data(map *maps, int idx, char *run, bool no_interpol_out, int grid_typ
     } else {
       if (strcmp(maps[idx].name, "ZNU") != 0 && strcmp(maps[idx].name, "ZNW") != 0 &&
           strcmp(maps[idx].name, "W") != 0 && strcmp(maps[idx].name, "PHB") != 0 &&
-          strcmp(maps[idx].name, "PH") != 0 && strcmp(maps[idx].name, "ABS_VERT_VORT") != 0) {
+          strcmp(maps[idx].name, "PH") != 0 && strcmp(maps[idx].name, "ABS_VERT_VORT") != 0 &&
+          strcmp(maps[idx].name, "REL_VERT_VORT") != 0) {
             f = fopen(file[0], "w");
       }
     }
 
     if (strcmp(maps[idx].name, "U") != 0 && strcmp(maps[idx].name, "V") != 0 &&
         strcmp(maps[idx].name, "W") != 0 && strcmp(maps[idx].name, "PHB") != 0 &&
-        strcmp(maps[idx].name, "PH") != 0 && strcmp(maps[idx].name, "ABS_VERT_VORT") != 0) {
+        strcmp(maps[idx].name, "PH") != 0 && strcmp(maps[idx].name, "ABS_VERT_VORT") != 0 &&
+        strcmp(maps[idx].name, "REL_VERT_VORT") != 0) {
           f_nn = fopen(file_nn[0], "w");
     }
 
@@ -1854,7 +1893,8 @@ int write_data(map *maps, int idx, char *run, bool no_interpol_out, int grid_typ
           strcmp(maps[idx].name, "COR_EAST") != 0 && strcmp(maps[idx].name, "COR_NORTH") != 0 &&
           strcmp(maps[idx].name, "W") != 0 && strcmp(maps[idx].name, "PHB") != 0 &&
           strcmp(maps[idx].name, "PH") != 0 && strcmp(maps[idx].name, "GEOPOTENTIAL") != 0 &&
-          strcmp(maps[idx].name, "COR_PARAM") != 0 && strcmp(maps[idx].name, "ABS_VERT_VORT") != 0) {
+          strcmp(maps[idx].name, "COR_PARAM") != 0 && strcmp(maps[idx].name, "ABS_VERT_VORT") != 0 &&
+          strcmp(maps[idx].name, "REL_VERT_VORT") != 0) {
             write_visual_to_file(f, maps, idx, z);
       }
     }
@@ -1871,7 +1911,8 @@ int write_data(map *maps, int idx, char *run, bool no_interpol_out, int grid_typ
         strcmp(maps[idx].name, "COR_EAST") != 0 && strcmp(maps[idx].name, "COR_NORTH") != 0 &&
         strcmp(maps[idx].name, "W") != 0 && strcmp(maps[idx].name, "PHB") != 0 &&
         strcmp(maps[idx].name, "PH") != 0 && strcmp(maps[idx].name, "GEOPOTENTIAL") != 0 &&
-        strcmp(maps[idx].name, "COR_PARAM") != 0 && strcmp(maps[idx].name, "ABS_VERT_VORT") != 0) {
+        strcmp(maps[idx].name, "COR_PARAM") != 0 && strcmp(maps[idx].name, "ABS_VERT_VORT") != 0 &&
+        strcmp(maps[idx].name, "REL_VERT_VORT") != 0) {
           write_nn_to_file(f_nn, maps, idx, z, feature_scaling_func);
     }
 
@@ -1884,7 +1925,8 @@ int write_data(map *maps, int idx, char *run, bool no_interpol_out, int grid_typ
           strcmp(maps[idx].name, "COR_EAST") != 0 && strcmp(maps[idx].name, "COR_NORTH") != 0 &&
           strcmp(maps[idx].name, "W") != 0 && strcmp(maps[idx].name, "PHB") != 0 &&
           strcmp(maps[idx].name, "PH") != 0 && strcmp(maps[idx].name, "GEOPOTENTIAL") != 0 &&
-          strcmp(maps[idx].name, "COR_PARAM") != 0 && strcmp(maps[idx].name, "ABS_VERT_VORT") != 0) {
+          strcmp(maps[idx].name, "COR_PARAM") != 0 && strcmp(maps[idx].name, "ABS_VERT_VORT") != 0 &&
+          strcmp(maps[idx].name, "REL_VERT_VORT") != 0) {
             fclose(f);
       }
     }
@@ -1893,7 +1935,8 @@ int write_data(map *maps, int idx, char *run, bool no_interpol_out, int grid_typ
         strcmp(maps[idx].name, "COR_EAST") != 0 && strcmp(maps[idx].name, "COR_NORTH") != 0 &&
         strcmp(maps[idx].name, "W") != 0 && strcmp(maps[idx].name, "PHB") != 0 &&
         strcmp(maps[idx].name, "PH") != 0 && strcmp(maps[idx].name, "GEOPOTENTIAL") != 0 &&
-        strcmp(maps[idx].name, "COR_PARAM") != 0 && strcmp(maps[idx].name, "ABS_VERT_VORT") != 0) {
+        strcmp(maps[idx].name, "COR_PARAM") != 0 && strcmp(maps[idx].name, "ABS_VERT_VORT") != 0 &&
+        strcmp(maps[idx].name, "REL_VERT_VORT") != 0) {
           fclose(f_nn);
     }
 #ifdef __NVCC__
@@ -2067,8 +2110,16 @@ int write_data(map *maps, int idx, char *run, bool no_interpol_out, int grid_typ
 
     if (strcmp(maps[idx].name, "ABS_VERT_VORT") == 0) {
 #ifdef __NVCC__
-    compute_vorticity(h_vorticity, d_vorticity, maps, idx, z, file, file_nn, block, grid, grid_type,
-                      feature_scaling_func);
+    compute_vert_vorticity(h_abs_vert_vort, d_abs_vert_vort, maps, idx, z, file, file_nn, block, grid,
+                      grid_type, feature_scaling_func, true);
+#else
+    // Not implemented yet
+#endif
+    }
+    if (strcmp(maps[idx].name, "REL_VERT_VORT") == 0) {
+#ifdef __NVCC__
+    compute_vert_vorticity(h_rel_vert_vort, d_rel_vert_vort, maps, idx, z, file, file_nn, block, grid,
+                  grid_type, feature_scaling_func, false);
 #else
     // Not implemented yet
 #endif
@@ -2212,6 +2263,7 @@ int process(char files[][MAX_STRING_LENGTH], uint num_files, bool no_interpol_ou
     if (maps[GEOPOTENTIAL].active)                geopotential  = allocate_tensor(shape, rank);
     if (maps[COR_PARAM].active)                   cor_param     = allocate_tensor(shape, rank);
     if (maps[ABS_VERT_VORT].active)               abs_vert_vort = allocate_tensor(shape, rank);
+    if (maps[REL_VERT_VORT].active)               rel_vert_vort = allocate_tensor(shape, rank);
 
     shape[1] = NZ_STAG;
     if (maps[PH].active || maps[GEOPOTENTIAL].active) {
@@ -2252,7 +2304,7 @@ int process(char files[][MAX_STRING_LENGTH], uint num_files, bool no_interpol_ou
 
     // If the vorticity field is computed, set the fd tags here
     // Memory allocation using the mass points dimensions
-    if (maps[ABS_VERT_VORT].active) {
+    if (maps[ABS_VERT_VORT].active || maps[REL_VERT_VORT].active) {
       domain_tags = allocate_fd_tags(NY*NX);
       set_fd_tags(domain_tags, NY, NX);
     }
@@ -2603,39 +2655,39 @@ int process(char files[][MAX_STRING_LENGTH], uint num_files, bool no_interpol_ou
 #endif
 
     if (maps[ABS_VERT_VORT].active) {
-      h_vorticity = (fd_container *) malloc(sizeof(fd_container));
-      h_vorticity->val = (float *)malloc((NY*NX)*sizeof(float));
-      h_vorticity->stencils_val = (float *)malloc((6*NY*NX)*sizeof(float));
-      h_vorticity->buffer = (float *)malloc((NY*NX)*sizeof(float));
-      memset(h_vorticity->val, 0.0f, (NY*NX)*sizeof(float));
-      memset(h_vorticity->stencils_val, 0.0f, (6*NY*NX)*sizeof(float));
-      memset(h_vorticity->buffer, 0.0f, (NY*NX)*sizeof(float));
+      h_abs_vert_vort = (fd_container *) malloc(sizeof(fd_container));
+      h_abs_vert_vort->val = (float *)malloc((NY*NX)*sizeof(float));
+      h_abs_vert_vort->stencils_val = (float *)malloc((6*NY*NX)*sizeof(float));
+      h_abs_vert_vort->buffer = (float *)malloc((NY*NX)*sizeof(float));
+      memset(h_abs_vert_vort->val, 0.0f, (NY*NX)*sizeof(float));
+      memset(h_abs_vert_vort->stencils_val, 0.0f, (6*NY*NX)*sizeof(float));
+      memset(h_abs_vert_vort->buffer, 0.0f, (NY*NX)*sizeof(float));
 #ifdef __NVCC__
-      if (cudaMalloc((fd_container**)&d_vorticity, sizeof(fd_container)) != cudaSuccess) {
-        fprintf(stderr, "Memory allocation failure for vorticity on device.\n");
+      if (cudaMalloc((fd_container**)&d_abs_vert_vort, sizeof(fd_container)) != cudaSuccess) {
+        fprintf(stderr, "Memory allocation failure for abs. vert. vorticity on device.\n");
         exit(EXIT_FAILURE);
       }
 
-      if (cudaMemcpy(d_vorticity, h_vorticity, sizeof(fd_container), cudaMemcpyHostToDevice) != cudaSuccess) {
-        fprintf(stderr, "Memory copy <vorticity> failure to device.\n");
+      if (cudaMemcpy(d_abs_vert_vort, h_abs_vert_vort, sizeof(fd_container), cudaMemcpyHostToDevice) != cudaSuccess) {
+        fprintf(stderr, "Memory copy <abs. vert. vorticity> failure to device.\n");
         exit(EXIT_FAILURE);
       }
       {
         float *v[1];
         cudaMalloc(&(v[0]), (NY*NX)*sizeof(float));
-        cudaMemcpy(&(d_vorticity[0].val), &(v[0]), sizeof(float *), cudaMemcpyHostToDevice);
+        cudaMemcpy(&(d_abs_vert_vort[0].val), &(v[0]), sizeof(float *), cudaMemcpyHostToDevice);
         cudaMemset(v[0], 0.0f, (NY*NX)*sizeof(float));
       }
       {
         float *v[1];
         cudaMalloc(&(v[0]), (6*NY*NX)*sizeof(float));
-        cudaMemcpy(&(d_vorticity[0].stencils_val), &(v[0]), sizeof(float *), cudaMemcpyHostToDevice);
+        cudaMemcpy(&(d_abs_vert_vort[0].stencils_val), &(v[0]), sizeof(float *), cudaMemcpyHostToDevice);
         cudaMemset(v[0], 0.0f, (6*NY*NX)*sizeof(float));
       }
       {
         float *v[1];
         cudaMalloc(&(v[0]), (NY*NX)*sizeof(float));
-        cudaMemcpy(&(d_vorticity[0].buffer), &(v[0]), sizeof(float *), cudaMemcpyHostToDevice);
+        cudaMemcpy(&(d_abs_vert_vort[0].buffer), &(v[0]), sizeof(float *), cudaMemcpyHostToDevice);
         cudaMemset(v[0], 0.0f, (NY*NX)*sizeof(float));
       }
 
@@ -2647,12 +2699,48 @@ int process(char files[][MAX_STRING_LENGTH], uint num_files, bool no_interpol_ou
       {
         float *lat = maps[XLAT].variable->val;
         float *v[1];
-        cudaMemcpy(&(v[0]), &(d_vorticity[0].buffer), sizeof(float *), cudaMemcpyDeviceToHost);
+        cudaMemcpy(&(v[0]), &(d_abs_vert_vort[0].buffer), sizeof(float *), cudaMemcpyDeviceToHost);
         cudaMemcpy(v[0], lat, (NY*NX)*sizeof(float), cudaMemcpyHostToDevice);
       }
-
 #else
-      fprintf(stderr, "Computing the vorticity is not implemented in serial yet.\n");
+      fprintf(stderr, "Computing the absolute vertival vorticity is not implemented in serial yet.\n");
+#endif
+    }
+
+    if (maps[REL_VERT_VORT].active) {
+      h_rel_vert_vort = (fd_container *)malloc(sizeof(fd_container));
+      h_rel_vert_vort->val = (float *)malloc((NY*NX)*sizeof(float));
+      h_rel_vert_vort->stencils_val = (float *)malloc((6*NY*NX)*sizeof(float));
+      memset(h_rel_vert_vort->val, 0.0f, (NY*NX)*sizeof(float));
+      memset(h_rel_vert_vort->stencils_val, 0.0f, (6*NY*NX)*sizeof(float));
+#ifdef __NVCC__
+      if (cudaMalloc((fd_container**)&d_rel_vert_vort, sizeof(fd_container)) != cudaSuccess) {
+        fprintf(stderr, "Memory allocation failure for rel. vert. vorticity on device.\n");
+        exit(EXIT_FAILURE);
+      }
+
+      if (cudaMemcpy(d_rel_vert_vort, h_rel_vert_vort, sizeof(fd_container), cudaMemcpyHostToDevice) != cudaSuccess) {
+        fprintf(stderr, "Memory copy <rel. vert. vorticity> failure to device.\n");
+        exit(EXIT_FAILURE);
+      }
+      {
+       float *v[1];
+       cudaMalloc(&(v[0]), (NY*NX)*sizeof(float));
+       cudaMemcpy(&(d_rel_vert_vort[0].val), &(v[0]), sizeof(float *), cudaMemcpyHostToDevice);
+       cudaMemset(v[0], 0.0f, (NY*NX)*sizeof(float));
+     }
+     {
+       float *v[1];
+       cudaMalloc(&(v[0]), (6*NY*NX)*sizeof(float));
+       cudaMemcpy(&(d_rel_vert_vort[0].stencils_val), &(v[0]), sizeof(float *), cudaMemcpyHostToDevice);
+       cudaMemset(v[0], 0.0f, (6*NY*NX)*sizeof(float));
+     }
+
+      // Allocate space to store (U,V)
+      maps[REL_VERT_VORT].buffer1 = (float *)malloc((NZ*NY*NX)*sizeof(float));
+      maps[REL_VERT_VORT].buffer2 = (float *)malloc((NZ*NY*NX)*sizeof(float));
+#else
+      fprintf(stderr, "Computing the relative vertical vorticity is not implemented in serial yet.\n");
 #endif
     }
 
@@ -2707,12 +2795,13 @@ int process(char files[][MAX_STRING_LENGTH], uint num_files, bool no_interpol_ou
     deallocate_tensor(v);
     deallocate_tensor(w);
 
-    if (pressure != NULL)       deallocate_tensor(pressure);
+    if (pressure != NULL)      deallocate_tensor(pressure);
     if (cor_east != NULL)      deallocate_tensor(cor_east);
     if (cor_north != NULL)     deallocate_tensor(cor_north);
     if (geopotential != NULL)  deallocate_tensor(geopotential);
     if (cor_param != NULL)     deallocate_tensor(cor_param);
     if (abs_vert_vort != NULL) deallocate_tensor(abs_vert_vort);
+    if (rel_vert_vort != NULL) deallocate_tensor(rel_vert_vort);
 
     if (domain_tags != NULL) {
       free(domain_tags);
@@ -2854,29 +2943,53 @@ int process(char files[][MAX_STRING_LENGTH], uint num_files, bool no_interpol_ou
 #endif
 
     if (maps[ABS_VERT_VORT].active) {
-      free(h_vorticity->val);
-      free(h_vorticity->stencils_val);
-      free(h_vorticity);
+      free(h_abs_vert_vort->val);
+      free(h_abs_vert_vort->stencils_val);
+      free(h_abs_vert_vort->buffer);
+      free(h_abs_vert_vort);
 #ifdef __NVCC__
       {
         float *v[1];
-        cudaMemcpy(&(v[0]), &(d_vorticity[0].val), sizeof(float *), cudaMemcpyDeviceToHost);
+        cudaMemcpy(&(v[0]), &(d_abs_vert_vort[0].val), sizeof(float *), cudaMemcpyDeviceToHost);
         cudaFree(v[0]);
       }
       {
         float *v[1];
-        cudaMemcpy(&(v[0]), &(d_vorticity[0].stencils_val), sizeof(float *), cudaMemcpyDeviceToHost);
+        cudaMemcpy(&(v[0]), &(d_abs_vert_vort[0].stencils_val), sizeof(float *), cudaMemcpyDeviceToHost);
         cudaFree(v[0]);
       }
       {
         float *v[1];
-        cudaMemcpy(&(v[0]), &(d_vorticity[0].buffer), sizeof(float *), cudaMemcpyDeviceToHost);
+        cudaMemcpy(&(v[0]), &(d_abs_vert_vort[0].buffer), sizeof(float *), cudaMemcpyDeviceToHost);
         cudaFree(v[0]);
       }
-      cudaFree(d_vorticity);
-#endif
+      cudaFree(d_abs_vert_vort);
+
       free(maps[ABS_VERT_VORT].buffer1);
       free(maps[ABS_VERT_VORT].buffer2);
+#endif
+    }
+
+    if (maps[REL_VERT_VORT].active) {
+      free(h_rel_vert_vort->val);
+      free(h_rel_vert_vort->stencils_val);
+      free(h_rel_vert_vort);
+#ifdef __NVCC__
+      {
+        float *v[1];
+        cudaMemcpy(&(v[0]), &(d_rel_vert_vort[0].val), sizeof(float *), cudaMemcpyDeviceToHost);
+        cudaFree(v[0]);
+      }
+      {
+        float *v[1];
+        cudaMemcpy(&(v[0]), &(d_rel_vert_vort[0].stencils_val), sizeof(float *), cudaMemcpyDeviceToHost);
+        cudaFree(v[0]);
+      }
+      cudaFree(d_rel_vert_vort);
+
+      free(maps[REL_VERT_VORT].buffer1);
+      free(maps[REL_VERT_VORT].buffer2);
+#endif
     }
 // --------------------------------------------------------------------------------------------------
   } // End loop over files

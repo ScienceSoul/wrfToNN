@@ -122,24 +122,43 @@ void get_stencils_values(fd_tags *fd_tags, fd_container *fd_container, float *dd
 }
 
 #ifdef __NVCC__
-__global__ void gpu_compute_ref_vert_vort(fd_container *fd_container, const int NY, const int NX, const int dy,
+__device__ void get_rel_vert_vort(fd_container *fd_container, int idx, float *dv_dx, float *du_dy, int dy, int dx) {
+
+   float ddx_flag = fd_container->stencils_val[(idx*6)];
+   float v1       = fd_container->stencils_val[(idx*6)+1];
+   float v2       = fd_container->stencils_val[(idx*6)+2];
+   float ddy_flag = fd_container->stencils_val[(idx*6)+3];
+   float u1       = fd_container->stencils_val[(idx*6)+4];
+   float u2       = fd_container->stencils_val[(idx*6)+5];
+
+   *dv_dx = (ddx_flag == 2.0f) ? (v1-v2)/(2.0f*dx) : (v1-v2)/dx;
+   *du_dy = (ddy_flag == 2.0f) ? (u1-u2)/(2.0f*dy) : (u1-u2)/dy;
+}
+
+__global__ void gpu_compute_rel_vert_vort(fd_container *fd_container, const int NY, const int NX, const int dy,
    const int dx) {
 
    int IDX = blockIdx.x * blockDim.x + threadIdx.x;
 
    if (IDX >= (NY*NX)) return;
 
-   float ddx_flag = fd_container->stencils_val[(IDX*6)];
-   float v1       = fd_container->stencils_val[(IDX*6)+1];
-   float v2       = fd_container->stencils_val[(IDX*6)+2];
-   float ddy_flag = fd_container->stencils_val[(IDX*6)+3];
-   float u1       = fd_container->stencils_val[(IDX*6)+4];
-   float u2       = fd_container->stencils_val[(IDX*6)+5];
+   float dv_dx = 0.0f;
+   float du_dy = 0.0f;
+   get_rel_vert_vort(fd_container, IDX, &dv_dx, &du_dy, dy, dx);
+
+   fd_container->val[IDX] = (dv_dx - du_dy)*1.0e06;
+}
+
+__global__ void gpu_compute_abs_vert_vort(fd_container *fd_container, const int NY, const int NX, const int dy,
+   const int dx) {
+
+   int IDX = blockIdx.x * blockDim.x + threadIdx.x;
+
+   if (IDX >= (NY*NX)) return;
 
    float dv_dx = 0.0f;
    float du_dy = 0.0f;
-   dv_dx = (ddx_flag == 2.0f) ? (v1-v2)/(2.0f*dx) : (v1-v2)/dx;
-   du_dy = (ddy_flag == 2.0f) ? (u1-u2)/(2.0f*dy) : (u1-u2)/dy;
+   get_rel_vert_vort(fd_container, IDX, &dv_dx, &du_dy, dy, dx);
 
    float earth_angular_velocity = 7.2921e-5; // rad/s
    float rad_lat = fd_container->buffer[IDX] * M_PI/180.0f;

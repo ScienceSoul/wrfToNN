@@ -110,11 +110,12 @@ typedef enum variables_code {
     COR_NORTH,     // Coriolis force directed due North
     GEOPOTENTIAL,  // The full geopotential = PH + PHB
     COR_PARAM,     // Coriolis parameter 2*\omega*sin(\phy)
-    ABS_VERT_VORT  // Absolute vertical
+    ABS_VERT_VORT, // Absolute vertical
                    // vorticity = f + reference vertical vorticity
+    REL_VERT_VORT  // Relative vertical vorticity dv/dx - du/dy
 } variables_code;
 
-#define DEF_NUM_VARIABLES 43;
+#define DEF_NUM_VARIABLES 44;
 
 const char *active_flags[] = {"ZNU:1",
                               "ZNW:1",
@@ -158,6 +159,7 @@ const char *active_flags[] = {"ZNU:1",
                               "COR_NORTH:1",
                               "GEOPOTENTIAL:1",
                               "COR_PARAM:1",
-                              "ABS_VERT_VORT:1"};
+                              "ABS_VERT_VORT:1",
+                              "REL_VERT_VORT:1"};
 
 #endif

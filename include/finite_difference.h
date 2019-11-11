@@ -17,7 +17,7 @@ typedef struct fd_tags {  // Store the fd tags for each node of the plane domain
 typedef struct fd_container {
   float *stencils_val;  // Store the values at the stencils used to
                         // compute derivative at a given node
-  float *val;           // The computed result from the finite difference
+  float *val;          // The container contains two buffers for results
   float *buffer;        // A buffer needed to store an auxilarry field
 } fd_container;
 
@@ -28,7 +28,9 @@ void get_stencils_values(fd_tags *fd_tags, fd_container *fd_container, float *dd
      int z);
 
 #ifdef __NVCC__
-__global__ void gpu_compute_ref_vert_vort(fd_container *fd_container, const int NY, const int NX, const int dy,
+__global__ void gpu_compute_rel_vert_vort(fd_container *fd_container, const int NY, const int NX, const int dy,
+   const int dx);
+__global__ void gpu_compute_abs_vert_vort(fd_container *fd_container, const int NY, const int NX, const int dy,
    const int dx);
 #endif
 
