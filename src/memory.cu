@@ -1,6 +1,10 @@
 #include "memory.h"
 
-tensor *allocate_tensor(uint *shape, uint rank) {
+// -------------------------------------------------------------------
+// Allocate tensor structure. The partial argument indicates that the 
+// the buffer for the values will not be allocated
+// ------------------------------------------------------------------- 
+tensor *allocate_tensor(uint *shape, uint rank, bool *partial) {
 
   tensor * t = (tensor *)malloc(sizeof(tensor));
   if (t == NULL) {
@@ -8,15 +12,26 @@ tensor *allocate_tensor(uint *shape, uint rank) {
     return NULL;
   }
 
-  uint size = 1;
-  for (int i = 0; i < rank; i++) {
-    size = size * shape[i];
+  bool allocate_buffer = true;
+  if (partial != NULL) {
+    if (*partial == true) {
+      allocate_buffer = false;
+    }
   }
 
-  t->val = (float *)malloc(size*sizeof(float));
-  if (t->val == NULL) {
-    perror("tensor values allocation problem");
-    return NULL;
+  if (allocate_buffer) {
+    uint size = 1;
+    for (int i = 0; i < rank; i++) {
+      size = size * shape[i];
+    }
+
+    t->val = (float *)malloc(size*sizeof(float));
+    if (t->val == NULL) {
+      perror("tensor values allocation problem");
+      return NULL;
+    }
+  } else {
+    t->val = NULL;
   }
 
   memcpy(t->shape, shape, rank*sizeof(uint));
@@ -26,8 +41,8 @@ tensor *allocate_tensor(uint *shape, uint rank) {
 }
 
 void deallocate_tensor(tensor *t) {
- free(t->val);
- free(t);
+  if (t->val != NULL) free(t->val);
+  free(t);
 }
 
 map *allocate_maps(int num_variables) {

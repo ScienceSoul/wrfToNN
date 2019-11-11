@@ -31,7 +31,7 @@ typedef struct map {
   bool used;      // If true, the variale is only loaded but not output
 } map;
 
-tensor *allocate_tensor(uint *shape, uint rank);
+tensor *allocate_tensor(uint *shape, uint rank, bool *partial);
 void deallocate_tensor(tensor *t);
 map *allocate_maps(int num_variables);
 

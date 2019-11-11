@@ -2192,112 +2192,112 @@ int process(char files[][MAX_STRING_LENGTH], uint num_files, bool no_interpol_ou
 
     shape[0] = NT; shape[1] = NZ;
     rank = 2;
-    znu = allocate_tensor(shape, rank);
+    znu = allocate_tensor(shape, rank, NULL);
     if (!maps[ZNU].active) maps[ZNU].used = true;
 
     shape[1] = NZ_STAG;
-    znw = allocate_tensor(shape, rank);
+    znw = allocate_tensor(shape, rank, NULL);
     if (!maps[ZNW].active) maps[ZNW].used = true;
 
     shape[0] = NT; shape[1] = NY; shape[2] = NX;
     rank = 3;
-    xlat  = allocate_tensor(shape, rank);
-    xlong = allocate_tensor(shape, rank);
+    xlat  = allocate_tensor(shape, rank, NULL);
+    xlong = allocate_tensor(shape, rank, NULL);
     if (!maps[XLAT].active) maps[XLAT].used = true;
     if (!maps[XLONG].active) maps[XLONG].used = true;
 
     shape[0] = NT; shape[1] = NY; shape[2] = NX_STAG;
-    xlat_u  = allocate_tensor(shape, rank);
-    xlong_u = allocate_tensor(shape, rank);
+    xlat_u  = allocate_tensor(shape, rank, NULL);
+    xlong_u = allocate_tensor(shape, rank, NULL);
     if (!maps[XLAT_U].active) maps[XLAT_U].used = true;
     if (!maps[XLONG_U].active) maps[XLONG_U].used = true;
 
     shape[0] = NT; shape[1] = NY_STAG; shape[2] = NX;
-    xlat_v  = allocate_tensor(shape, rank);
-    xlong_v = allocate_tensor(shape, rank);
+    xlat_v  = allocate_tensor(shape, rank, NULL);
+    xlong_v = allocate_tensor(shape, rank, NULL);
     if (!maps[XLAT_V].active) maps[XLAT_V].used = true;
     if (!maps[XLONG_V].active) maps[XLONG_V].used = true;
 
     shape[0] = NT; shape[1] = NY; shape[2] = NX;
-    if (maps[SST].active) sst = allocate_tensor(shape, rank);
-    if (maps[OLR].active) olr = allocate_tensor(shape, rank);
+    if (maps[SST].active) sst = allocate_tensor(shape, rank, NULL);
+    if (maps[OLR].active) olr = allocate_tensor(shape, rank, NULL);
 
     if (maps[MU].active || maps[DRY_MASS].active) {
-      mu = allocate_tensor(shape, rank);
+      mu = allocate_tensor(shape, rank, NULL);
       if (!maps[MU].active) maps[MU].used = true;
     }
     if (maps[MUB].active || maps[DRY_MASS].active) {
-      mub = allocate_tensor(shape, rank);
+      mub = allocate_tensor(shape, rank, NULL);
       if (!maps[MUB].active) maps[MUB].used = true;
     }
-    if (maps[DRY_MASS].active) dry_mass = allocate_tensor(shape, rank);
+    if (maps[DRY_MASS].active) dry_mass = allocate_tensor(shape, rank, NULL);
 
     shape[0] = NT; shape[1] = NZ; shape[2] = NY; shape[3] = NX;
     rank = 4;
-    if (maps[CLDFRA].active)                      cldfra        = allocate_tensor(shape, rank);
+    if (maps[CLDFRA].active)   cldfra   = allocate_tensor(shape, rank, NULL);
 
     if (maps[P].active || maps[PRESSURE].active) {
-      p = allocate_tensor(shape, rank);
+      p = allocate_tensor(shape, rank, NULL);
       if (!maps[P].active) maps[P].used = true;
     }
     if (maps[PB].active || maps[PRESSURE].active) {
-      pb = allocate_tensor(shape, rank);
+      pb = allocate_tensor(shape, rank, NULL);
       if (!maps[PB].active) maps[PB].used = true;
     }
 
-    if (maps[P_HYD].active)                       phyd          = allocate_tensor(shape, rank);
-    if (maps[QCLOUD].active)                      qcloud        = allocate_tensor(shape, rank);
-    if (maps[QGRAUP].active)                      qgraup        = allocate_tensor(shape, rank);
-    if (maps[QICE].active)                        qice          = allocate_tensor(shape, rank);
-    if (maps[QNGRAUPEL].active)                   qngraupel     = allocate_tensor(shape, rank);
-    if (maps[QNICE].active)                       qnice         = allocate_tensor(shape, rank);
-    if (maps[QNRAIN].active)                      qnrain        = allocate_tensor(shape, rank);
-    if (maps[QNSNOW].active)                      qnsnow        = allocate_tensor(shape, rank);
-    if (maps[QRAIN].active)                       qrain         = allocate_tensor(shape, rank);
-    if (maps[QSNOW].active)                       qsnow         = allocate_tensor(shape, rank);
-    if (maps[QVAPOR].active)                      qvapor        = allocate_tensor(shape, rank);
-    if (maps[T].active)                           t             = allocate_tensor(shape, rank);
-    if (maps[PRESSURE].active)                    pressure      = allocate_tensor(shape, rank);
-    if (maps[COR_EAST].active)                    cor_east      = allocate_tensor(shape, rank);
-    if (maps[COR_NORTH].active)                   cor_north     = allocate_tensor(shape, rank);
-    if (maps[GEOPOTENTIAL].active)                geopotential  = allocate_tensor(shape, rank);
-    if (maps[COR_PARAM].active)                   cor_param     = allocate_tensor(shape, rank);
-    if (maps[ABS_VERT_VORT].active)               abs_vert_vort = allocate_tensor(shape, rank);
-    if (maps[REL_VERT_VORT].active)               rel_vert_vort = allocate_tensor(shape, rank);
+    bool partial = true;
+    if (maps[P_HYD].active)                       phyd          = allocate_tensor(shape, rank, NULL);
+    if (maps[QCLOUD].active)                      qcloud        = allocate_tensor(shape, rank, NULL);
+    if (maps[QGRAUP].active)                      qgraup        = allocate_tensor(shape, rank, NULL);
+    if (maps[QICE].active)                        qice          = allocate_tensor(shape, rank, NULL);
+    if (maps[QNGRAUPEL].active)                   qngraupel     = allocate_tensor(shape, rank, NULL);
+    if (maps[QNICE].active)                       qnice         = allocate_tensor(shape, rank, NULL);
+    if (maps[QNRAIN].active)                      qnrain        = allocate_tensor(shape, rank, NULL);
+    if (maps[QNSNOW].active)                      qnsnow        = allocate_tensor(shape, rank, NULL);
+    if (maps[QRAIN].active)                       qrain         = allocate_tensor(shape, rank, NULL);
+    if (maps[QSNOW].active)                       qsnow         = allocate_tensor(shape, rank, NULL);
+    if (maps[QVAPOR].active)                      qvapor        = allocate_tensor(shape, rank, NULL);
+    if (maps[T].active)                           t             = allocate_tensor(shape, rank, NULL);
+    if (maps[PRESSURE].active)                    pressure      = allocate_tensor(shape, rank, NULL);
+    if (maps[COR_EAST].active)                    cor_east      = allocate_tensor(shape, rank, NULL);
+    if (maps[COR_NORTH].active)                   cor_north     = allocate_tensor(shape, rank, NULL);
+    if (maps[GEOPOTENTIAL].active)                geopotential  = allocate_tensor(shape, rank, NULL);
+    if (maps[COR_PARAM].active)                   cor_param     = allocate_tensor(shape, rank, NULL);
+    if (maps[ABS_VERT_VORT].active)               abs_vert_vort = allocate_tensor(shape, rank, &partial);
+    if (maps[REL_VERT_VORT].active)               rel_vert_vort = allocate_tensor(shape, rank, &partial);
 
     shape[1] = NZ_STAG;
     if (maps[PH].active || maps[GEOPOTENTIAL].active) {
-      ph = allocate_tensor(shape, rank);
+      ph = allocate_tensor(shape, rank, NULL);
       if (!maps[PH].active) maps[PH].used = true;
     }
     if (maps[PHB].active || maps[GEOPOTENTIAL].active) {
-      phb = allocate_tensor(shape, rank);
+      phb = allocate_tensor(shape, rank, NULL);
       if (!maps[PHB].active) maps[PHB].used = true;
     }
 
-    w = allocate_tensor(shape, rank);
+    w = allocate_tensor(shape, rank, NULL);
     if (!maps[W].active) maps[W].used = true;
 
     shape[1] = NZ_SOIL_STAG;
-    if (maps[SH2O].active)   sh2o   = allocate_tensor(shape, rank);
-    if (maps[SMCREL].active) smcrel = allocate_tensor(shape, rank);
-    if (maps[SMOIS].active)  smois  = allocate_tensor(shape, rank);
-    if (maps[TSLB].active)   tslb   = allocate_tensor(shape, rank);
+    if (maps[SH2O].active)   sh2o   = allocate_tensor(shape, rank, NULL);
+    if (maps[SMCREL].active) smcrel = allocate_tensor(shape, rank, NULL);
+    if (maps[SMOIS].active)  smois  = allocate_tensor(shape, rank, NULL);
+    if (maps[TSLB].active)   tslb   = allocate_tensor(shape, rank, NULL);
 
     shape[0] = NT; shape[1] = NZ; shape[2] = NY; shape[3] = NX_STAG;
-    u       = allocate_tensor(shape, rank);
+    u       = allocate_tensor(shape, rank, NULL);
     if (!maps[U].active) maps[U].used = true;
 
     shape[0] = NT; shape[1] = NZ; shape[2] = NY_STAG; shape[3] = NX;
-    v       = allocate_tensor(shape, rank);
+    v       = allocate_tensor(shape, rank, NULL);
     if (!maps[V].active) maps[V].used = true;
 
     set_maps(maps, false);
 
     // Load the variables into memory
     for (int i = 0; i < NUM_VARIABLES; i++) {
-      if ((retval = load_variable(ncid, maps[i].name, maps[i].variable, maps[i].active,
-           maps[i].used))) {
+      if ((retval = load_variable(ncid, maps[i].name, maps[i].variable, maps[i].active, maps[i].used))) {
           ERR(retval);
         }
     }
