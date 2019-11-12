@@ -29,9 +29,9 @@ void get_stencils_values(fd_tags *fd_tags, fd_container *fd_container, float *dd
 
 #ifdef __NVCC__
 __global__ void gpu_compute_rel_vert_vort(fd_container *fd_container, const int NY, const int NX, const int dy,
-   const int dx);
+   const int dx, float scaling_factor);
 __global__ void gpu_compute_abs_vert_vort(fd_container *fd_container, const int NY, const int NX, const int dy,
-   const int dx);
+   const int dx, float scaling_factor);
 #endif
 
 #endif

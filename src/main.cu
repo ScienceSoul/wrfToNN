@@ -1633,9 +1633,9 @@ void compute_vert_vorticity(fd__container *h_vorticity, map *maps, int idx, int 
 
     double i_start = cpu_second();
     if (absolute) {
-      gpu_compute_abs_vert_vort<<<grid, block>>>(d_vorticity, NY, NX, DY, DX);
+      gpu_compute_abs_vert_vort<<<grid, block>>>(d_vorticity, NY, NX, DY, DX, VORTICITY_SCALING);
     } else {
-      gpu_compute_rel_vert_vort<<<grid, block>>>(d_vorticity, NY, NX, DY, DX);
+      gpu_compute_rel_vert_vort<<<grid, block>>>(d_vorticity, NY, NX, DY, DX, VORTICITY_SCALING);
     }
 
     cudaDeviceSynchronize();

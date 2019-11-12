@@ -136,7 +136,7 @@ __device__ void get_rel_vert_vort(fd_container *fd_container, int idx, float *dv
 }
 
 __global__ void gpu_compute_rel_vert_vort(fd_container *fd_container, const int NY, const int NX, const int dy,
-   const int dx) {
+   const int dx, float scaling_factor) {
 
    int IDX = blockIdx.x * blockDim.x + threadIdx.x;
 
@@ -146,11 +146,11 @@ __global__ void gpu_compute_rel_vert_vort(fd_container *fd_container, const int 
    float du_dy = 0.0f;
    get_rel_vert_vort(fd_container, IDX, &dv_dx, &du_dy, dy, dx);
 
-   fd_container->val[IDX] = (dv_dx - du_dy)*1.0e06;
+   fd_container->val[IDX] = (dv_dx - du_dy)*scaling_factor;
 }
 
 __global__ void gpu_compute_abs_vert_vort(fd_container *fd_container, const int NY, const int NX, const int dy,
-   const int dx) {
+   const int dx, float scaling_factor) {
 
    int IDX = blockIdx.x * blockDim.x + threadIdx.x;
 
@@ -164,6 +164,6 @@ __global__ void gpu_compute_abs_vert_vort(fd_container *fd_container, const int 
    float rad_lat = fd_container->buffer[IDX] * M_PI/180.0f;
    float f = 2.0f*earth_angular_velocity*sinf(rad_lat);
 
-   fd_container->val[IDX] = (f + (dv_dx - du_dy))*1.0e06; // Return the result in (micoseconds)^-1
+   fd_container->val[IDX] = (f + (dv_dx - du_dy))*scaling_factor;
  }
 #endif
