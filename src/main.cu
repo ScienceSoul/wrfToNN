@@ -2350,12 +2350,6 @@ int process(char files[][MAX_STRING_LENGTH], uint num_files, bool no_interpol_ou
       d_lat = (dy/1000.0f) / earth_radius;
       fprintf(stdout, "Grid spacing in degrees:\n");
       fprintf(stdout, "%f %f\n", d_long*180.0f/M_PI, d_lat*180.0f/M_PI);
-
-      float *longi = maps[XLONG].variable->val;
-      for(int i = 1; i < NY*NX; i++) {
-        printf("%f\n", longi[i]-longi[i-1]);
-      }
-      exit(0);
     }
 
     // If the vorticity field is computed, set the fd tags here
