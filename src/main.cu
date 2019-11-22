@@ -29,9 +29,6 @@ uint NZ_STAG      = DEF_NZ_STAG;
 uint NZ_SOIL_STAG = DEF_NZ_SOIL_STAG;
 uint NT           = DEF_NT;
 
-uint DX           = DEF_DX;
-uint DY           = DEF_DY;
-
 uint NUM_VARIABLES = DEF_NUM_VARIABLES;
 
 uint UNROLL_SIZE = DEF_UNROLL_SIZE;
@@ -127,6 +124,34 @@ fd_tags *domain_tags = NULL;
 // ----------------------------------
 map *maps = NULL;
 // ----------------------------------
+
+// ------------------------------------------------
+// Globals for the centered latitude and longitude
+// ------------------------------------------------
+float cen_lat;
+float cen_long;
+// ------------------------------------------------
+
+// ----------------------------------------------
+// Globals for the grid spacing
+// ----------------------------------------------
+float dx;
+float dy;
+// ----------------------------------------------
+
+// --------------------------------------------------
+// Globals for the latitude and longitude increments
+// --------------------------------------------------
+float d_lat;
+float d_long;
+// ---------------------------------------------------
+
+// ---------------------------------------------------
+// Some globals
+// ---------------------------------------------------
+const float earth_radius = 6371.0f;
+const float earth_angular_velocity = 7.2921e-5; // rad/s
+// ---------------------------------------------------
 
 void set_maps(map *maps, bool initial) {
 
@@ -1633,9 +1658,9 @@ void compute_vert_vorticity(fd__container *h_vorticity, map *maps, int idx, int 
 
     double i_start = cpu_second();
     if (absolute) {
-      gpu_compute_abs_vert_vort<<<grid, block>>>(d_vorticity, NY, NX, DY, DX, VORTICITY_SCALING);
+      gpu_compute_abs_vert_vort<<<grid, block>>>(d_vorticity, NY, NX, dy, dx, VORTICITY_SCALING);
     } else {
-      gpu_compute_rel_vert_vort<<<grid, block>>>(d_vorticity, NY, NX, DY, DX, VORTICITY_SCALING);
+      gpu_compute_rel_vert_vort<<<grid, block>>>(d_vorticity, NY, NX, dy, dx, VORTICITY_SCALING);
     }
 
     cudaDeviceSynchronize();
@@ -2009,8 +2034,6 @@ int write_data(map *maps, int idx, char *run, bool no_interpol_out, int grid_typ
         uint nx = 0;
         uint ny = 0;
 
-        float earth_angular_velocity = 7.2921e-5; // rad/s
-
         get_horizontal_dims(COR_EAST, &nx, &ny);
 
         for (int y = 0; y < ny; y++) {
@@ -2037,8 +2060,6 @@ int write_data(map *maps, int idx, char *run, bool no_interpol_out, int grid_typ
         uint nx = 0;
         uint ny = 0;
 
-        float earth_angular_velocity = 7.2921e-5; // rad/s
-
         get_horizontal_dims(COR_NORTH, &nx, &ny);
 
         for (int y = 0; y < ny; y++) {
@@ -2064,8 +2085,6 @@ int write_data(map *maps, int idx, char *run, bool no_interpol_out, int grid_typ
 
         uint nx = 0;
         uint ny = 0;
-
-        float earth_angular_velocity = 7.2921e-5; // rad/s
 
         get_horizontal_dims(COR_PARAM, &nx, &ny);
 
@@ -2170,6 +2189,28 @@ int process(char files[][MAX_STRING_LENGTH], uint num_files, bool no_interpol_ou
 
     fprintf(stdout, "Nb Dimension:Nb Variables:Nb attributes:id of the unlimited dimensions: %d %d %d %d\n", ndims_in, nvars_in,
         ngatts_in, unlimited_in);
+
+    // Get a few attributes
+    {
+      int status;
+ 
+      status = nc_get_att(ncid, NC_GLOBAL, CEN_LAT_NAME, &cen_lat);
+      if (status != NC_NOERR) ERR(status);
+      printf("%f\n", cen_lat);
+
+      status = nc_get_att(ncid, NC_GLOBAL, CEN_LONG_NAME, &cen_long);
+      if (status != NC_NOERR) ERR(status);
+      printf("%f\n", cen_long);
+
+      status = nc_get_att(ncid, NC_GLOBAL, DX_NAME, &dx);
+      if (status != NC_NOERR) ERR(status);
+      printf("%f\n", dx);
+
+      status = nc_get_att(ncid, NC_GLOBAL, DY_NAME, &dy);
+      if (status != NC_NOERR) ERR(status);
+      printf("%f\n", dy);
+    }
+
 
     if (!first_time) {
       set_maps(maps, true);
@@ -2300,6 +2341,21 @@ int process(char files[][MAX_STRING_LENGTH], uint num_files, bool no_interpol_ou
       if ((retval = load_variable(ncid, maps[i].name, maps[i].variable, maps[i].active, maps[i].used))) {
           ERR(retval);
         }
+    }
+
+    // Compute the latitude and longitude increments
+    // from the grid spacing
+    {
+      d_long = (dx/1000.0f) / (earth_radius * cosf(cen_lat*M_PI/180.0f));
+      d_lat = (dy/1000.0f) / earth_radius;
+      fprintf(stdout, "Grid spacing in degrees:\n");
+      fprintf(stdout, "%f %f\n", d_long*180.0f/M_PI, d_lat*180.0f/M_PI);
+
+      float *longi = maps[XLONG].variable->val;
+      for(int i = 1; i < NY*NX; i++) {
+        printf("%f\n", longi[i]-longi[i-1]);
+      }
+      exit(0);
     }
 
     // If the vorticity field is computed, set the fd tags here

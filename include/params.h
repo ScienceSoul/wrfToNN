@@ -7,6 +7,14 @@
 // The date of the files we are processing
 #define DATE "2013"
 
+// Define tne name of the grid spacing attributes
+#define DX_NAME "DX"
+#define DY_NAME "DY"
+
+// Define tne name of the centereed latitude and longitude attributes
+#define CEN_LAT_NAME  "CEN_LAT"
+#define CEN_LONG_NAME "CEN_LON"
+
 // Stack size
 #define STACK_SIZE 16 // MB
 
@@ -48,9 +56,6 @@ enum {
 #define DEF_NZ_SOIL_STAG 4;
 
 #define DEF_NT 1;
-
-#define DEF_DX 9000.f;
-#define DEF_DY 9000.f;
 // -----------------------------------------------------
 
 // -----------------------------------------------------
