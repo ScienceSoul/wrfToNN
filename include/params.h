@@ -2,10 +2,10 @@
 #define params_h
 
 // The working directory
-#define WORKDIR "/home/seddik/Documents/workdir/OSSE_CTL"
+#define WORKDIR "/home/seddik/Documents/workdir/WRF_Jebi"
 
 // The date of the files we are processing
-#define DATE "2013"
+#define DATE "2018"
 
 // Define tne name of the grid spacing attributes
 #define DX_NAME "DX"
@@ -45,21 +45,21 @@ enum {
 // -----------------------------------------------------
 // The global dimensions
 // -----------------------------------------------------
-#define DEF_NX 762;
-#define DEF_NX_STAG 763;
+#define DEF_NX 660;
+#define DEF_NX_STAG 661;
 
-#define DEF_NY 420;
-#define DEF_NY_STAG 421;
+#define DEF_NY 710;
+#define DEF_NY_STAG 711;
 
-#define DEF_NZ 40;
-#define DEF_NZ_STAG 41;
+#define DEF_NZ 50;
+#define DEF_NZ_STAG 51;
 #define DEF_NZ_SOIL_STAG 4;
 
 #define DEF_NT 1;
 // -----------------------------------------------------
 
 // -----------------------------------------------------
-float VORTICITY_SCALING = 1.0f;
+float VORTICITY_SCALING = 1.0e3f;
 // -----------------------------------------------------
 
 // ------------------------------------------------------

@@ -2196,21 +2196,20 @@ int process(char files[][MAX_STRING_LENGTH], uint num_files, bool no_interpol_ou
  
       status = nc_get_att(ncid, NC_GLOBAL, CEN_LAT_NAME, &cen_lat);
       if (status != NC_NOERR) ERR(status);
-      printf("%f\n", cen_lat);
+      printf("Got attribute %s: %f\n", CEN_LAT_NAME, cen_lat);
 
       status = nc_get_att(ncid, NC_GLOBAL, CEN_LONG_NAME, &cen_long);
       if (status != NC_NOERR) ERR(status);
-      printf("%f\n", cen_long);
+      printf("Got attribute %s: %f\n", CEN_LONG_NAME, cen_long);
 
       status = nc_get_att(ncid, NC_GLOBAL, DX_NAME, &dx);
       if (status != NC_NOERR) ERR(status);
-      printf("%f\n", dx);
+      printf("Got attribute %s: %f\n", DX_NAME, dx);
 
       status = nc_get_att(ncid, NC_GLOBAL, DY_NAME, &dy);
       if (status != NC_NOERR) ERR(status);
-      printf("%f\n", dy);
+      printf("Got attribute %s: %f\n", DY_NAME, dy);
     }
-
 
     if (!first_time) {
       set_maps(maps, true);
@@ -2356,7 +2355,11 @@ int process(char files[][MAX_STRING_LENGTH], uint num_files, bool no_interpol_ou
     // Memory allocation using the mass points dimensions
     if (maps[ABS_VERT_VORT].active || maps[REL_VERT_VORT].active) {
       domain_tags = allocate_fd_tags(NY*NX);
-      set_fd_tags(domain_tags, NY, NX);
+      int i = set_fd_tags(domain_tags, NY, NX);
+      if (i > NY*NX) {
+        fprintf(stdout, "Tags processing returns bigger number of nodes than in grid: %d.\n", i);
+        exit(EXIT_FAILURE);
+      }
     }
 
     // If required, compute the full pressure here

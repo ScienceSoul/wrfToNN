@@ -11,7 +11,7 @@ fd_tags *allocate_fd_tags(int n) {
   return tags;
 }
 
-void set_fd_tags(fd_tags *fd_tags, int NY, int NX) {
+int set_fd_tags(fd_tags *fd_tags, int NY, int NX) {
 
   int k = 0;
   for (int j = 0; j < NY; j++) {
@@ -73,6 +73,8 @@ void set_fd_tags(fd_tags *fd_tags, int NY, int NX) {
       k++;
     }
   }
+
+  return k;
 }
 
 void get_stencils_values(fd_tags *fd_tags, fd_container *fd_container, float *ddx, float *ddy, int NY, int NX,

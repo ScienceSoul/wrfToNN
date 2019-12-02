@@ -22,7 +22,7 @@ typedef struct fd_container {
 } fd_container;
 
 fd_tags *allocate_fd_tags(int n);
-void set_fd_tags(fd_tags *fd_tags, int NY, int NX);
+int set_fd_tags(fd_tags *fd_tags, int NY, int NX);
 
 void get_stencils_values(fd_tags *fd_tags, fd_container *fd_container, float *ddx, float *ddy, int NY, int NX,
      int z);

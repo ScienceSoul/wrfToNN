@@ -166,7 +166,7 @@ float normalize(float current, float *vec, uint length, bool *new_call) {
     max = maxv(vec, length);
     min = minv(vec, length);
   #endif
-    printf("---- max/min <%f,%f> on %d points (%f sec).\n", max, min, length, cpu_second() - rt);
+    printf("---- max/min <%f,%f> on %d nodes (%f sec).\n", max, min, length, cpu_second() - rt);
     init = false;
     *new_call = false;
   }
@@ -193,7 +193,7 @@ float normalize_centered(float current, float *vec, uint length, bool *new_call)
     max = maxv(vec, length);
     min = minv(vec, length);
   #endif
-    printf("---- max/min <%f,%f> on %d points (%f sec).\n", max, min, length, cpu_second() - rt);
+    printf("---- max/min <%f,%f> on %d nodes (%f sec).\n", max, min, length, cpu_second() - rt);
     init = false;
     *new_call = false;
   }
@@ -219,7 +219,7 @@ float standardize(float current, float *vec, uint length, bool *new_call) {
     mean = meanv(vec, length);
 #endif
     std = standard_dev(mean, vec, length);
-    printf("---- mean/std <%f,%f> on %d points (%f sec).\n", mean, std, length, cpu_second() - rt);
+    printf("---- mean/std <%f,%f> on %d nodes (%f sec).\n", mean, std, length, cpu_second() - rt);
     init = false;
     *new_call = false;
   }
