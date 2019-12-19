@@ -930,79 +930,39 @@ void write_nn_to_file(FILE *file, map *maps, int idx, int z, feature_scaling_pt 
 }
 
 void get_neighbors_val_horiz(velo_grid *h_velo_u_grid, velo_grid *h_velo_v_grid, map *maps,
-      uint NY_STAG, uint NX_STAG, uint NY, uint NX, uint num_support_points, char *data_name, int *z) {
-
-  if (data_name == NULL) {
-    fprintf(stderr, "Data name missing in routing get_neighbors_val_horiz().\n");
-  }
+      uint NY_STAG, uint NX_STAG, uint NY, uint NX, uint num_support_points, int *z) {
 
   static bool check = false;
-  if (strcmp(data_name, "velocities") == 0) {
-    if (!check) {
-      if (z == NULL) {
-        fprintf(stderr, "z coordinate missing in routing get_neighbors_val_horiz().\n");
-      }
-      check = true;
+  if (!check) {
+    if (z == NULL) {
+      fprintf(stderr, "z coordinate missing in routing get_neighbors_val_horiz().\n");
     }
+    check = true;
   }
 
   int offset1, offset2;
 
-  if (strcmp(data_name, "coordinates") == 0) {
-    offset1 = 0;
-    offset2 = 0;
-  } else if (strcmp(data_name, "velocities") == 0) {
-    offset1 = *z*NY*NX_STAG;
-    offset2 = *z*NY_STAG*NX;
-  } else {
-    fprintf(stderr, "Incorrect data name.\n");
-  }
+  offset1 = *z*NY*NX_STAG;
+  offset2 = *z*NY_STAG*NX;
 
-  // Get the coordinates/velocities of the neighbors of each point in the grid NY x NX
+  // Get the velocities of the neighbors of each point in the NY x NX grid
   // The neighbors are taken from the U and V grids
   // Only for two supporting points
-  if (strcmp(data_name, "coordinates") == 0) {
-    for (int i = 0; i < num_support_points; i++) {
-      int idx = 0;
-      for (int j = 0; j < NY; j++) {
-        for(int k = 0; k < NX; k++) {
-          switch (i) {
-            case 0: // Left point
-              h_velo_u_grid->x[((NY*NX)*i)+idx] = maps[U].longi->val[offset1+(NX_STAG*j)+k];
-              h_velo_u_grid->y[((NY*NX)*i)+idx] = maps[U].lat->val[offset1+(NX_STAG*j)+k];
-
-              h_velo_v_grid->x[((NY*NX)*i)+idx] = maps[V].longi->val[offset2+(NX*j)+k];
-              h_velo_v_grid->y[((NY*NX)*i)+idx] = maps[V].lat->val[offset2+(NX*j)+k];
-              break;
-            case 1: // Right point
-              h_velo_u_grid->x[((NY*NX)*i)+idx] = maps[U].longi->val[offset1+(NX_STAG*j)+k+1];
-              h_velo_u_grid->y[((NY*NX)*i)+idx] = maps[U].lat->val[offset1+(NX_STAG*j)+k+1];
-
-              h_velo_v_grid->x[((NY*NX)*i)+idx] = maps[V].longi->val[offset2+(NX*(j+1))+k];
-              h_velo_v_grid->y[((NY*NX)*i)+idx] = maps[V].lat->val[offset2+(NX*(j+1))+k];
+  for (int i = 0; i < num_support_points; i++) {
+    int idx = 0;
+    for (int j = 0; j < NY; j++) {
+      for(int k = 0; k < NX; k++) {
+        switch (i) {
+          case 0: // Left/down point
+            h_velo_u_grid->val[((NY*NX)*i)+idx] = maps[U].variable->val[offset1+(NX_STAG*j)+k];
+            h_velo_v_grid->val[((NY*NX)*i)+idx] = maps[V].variable->val[offset2+(NX*j)+k];
             break;
-          }
-          idx++;
-        }
-      }
-    }
-  } else if (strcmp(data_name, "velocities") == 0) {
-    for (int i = 0; i < num_support_points; i++) {
-      int idx = 0;
-      for (int j = 0; j < NY; j++) {
-        for(int k = 0; k < NX; k++) {
-          switch (i) {
-            case 0: // Left point
-              h_velo_u_grid->val[((NY*NX)*i)+idx] = maps[U].variable->val[offset1+(NX_STAG*j)+k];
-              h_velo_v_grid->val[((NY*NX)*i)+idx] = maps[V].variable->val[offset2+(NX*j)+k];
-              break;
-            case 1: // Right point
-              h_velo_u_grid->val[((NY*NX)*i)+idx] = maps[U].variable->val[offset1+(NX_STAG*j)+k+1];
-              h_velo_v_grid->val[((NY*NX)*i)+idx] = maps[V].variable->val[offset2+(NX*(j+1))+k];
+          case 1: // Right/up point
+            h_velo_u_grid->val[((NY*NX)*i)+idx] = maps[U].variable->val[offset1+(NX_STAG*j)+k+1];
+            h_velo_v_grid->val[((NY*NX)*i)+idx] = maps[V].variable->val[offset2+(NX*(j+1))+k];
             break;
-          }
-          idx++;
         }
+        idx++;
       }
     }
   }
@@ -1203,8 +1163,7 @@ void interpolate_wind_velo_horiz(map *maps, int idx, int z, char file[][MAX_STRI
       // Get the neighbors values of the mass points
       char *data_name = (char *)"velocities";
       double nv = cpu_second();
-      get_neighbors_val_horiz(h_velo_u_grid, h_velo_v_grid, maps, NY_STAG, NX_STAG, NY, NX,
-        NUM_SUPPORTING_POINTS_HORIZ, data_name, &z);
+      get_neighbors_val_horiz(h_velo_u_grid, h_velo_v_grid, maps, NY_STAG, NX_STAG, NY, NX, 2, &z);
       fprintf(stdout, "Time to get neighbors values (horiz): %f sec.\n", cpu_second() - nv);
     }
 
@@ -1214,22 +1173,21 @@ void interpolate_wind_velo_horiz(map *maps, int idx, int z, char file[][MAX_STRI
       {
         float *v[1];
         cudaMemcpy(&(v[0]), &(d_velo_u_grid[0].val), sizeof(float *), cudaMemcpyDeviceToHost);
-        cudaMemcpy(v[0], h_velo_u_grid->val, (NY*NX*NUM_SUPPORTING_POINTS_HORIZ)*sizeof(float), cudaMemcpyHostToDevice);
+        cudaMemcpy(v[0], h_velo_u_grid->val, (NY*NX*2)*sizeof(float), cudaMemcpyHostToDevice);
       }
       {
         float *vv[1];
         cudaMemcpy(&(vv[0]), &(d_velo_v_grid[0].val), sizeof(float *), cudaMemcpyDeviceToHost);
-        cudaMemcpy(vv[0], h_velo_v_grid->val, (NY*NX*NUM_SUPPORTING_POINTS_HORIZ)*sizeof(float), cudaMemcpyHostToDevice);
+        cudaMemcpy(vv[0], h_velo_v_grid->val, (NY*NX*2)*sizeof(float), cudaMemcpyHostToDevice);
       }
     }
 
     double i_start = cpu_second();
     if (grid_type == STRUCTURED) {
-        gpu_radially_interpolate_structured_horiz<<<grid, block>>>(d_velo_u_grid, d_velo_v_grid, d_mass_grid,
-                                    NY, NX, NUM_SUPPORTING_POINTS_HORIZ, 2.0f);
+        gpu_radially_interpolate_structured_horiz<<<grid, block>>>(d_velo_u_grid, d_velo_v_grid, d_mass_grid, NY, NX);
     } else {
         gpu_radially_interpolate_unstructured <<< grid, block >>>(d_velo_u_grid, d_velo_v_grid, d_mass_grid,
-                                    NY_STAG, NX_STAG, NY, NX, z, 2, 4, 2.0f);
+                                    NY_STAG, NX_STAG, NY, NX, z, 2, NUM_SUPPORTING_POINTS, 2.0f);
     }
 
     cudaDeviceSynchronize();
@@ -1392,12 +1350,11 @@ void interpolate_wind_velo_horiz(map *maps, int idx, int z, char file[][MAX_STRI
         float longi = maps[idx].mass_longi->val[(y*maps[idx].mass_longi->shape[2])+x];
         float lat   = maps[idx].mass_lat->val[(y*maps[idx].mass_lat->shape[2])+x];
         if (grid_type == STRUCTURED) {
-          interpol[i] = cpu_radially_interpolate_structured(pt_to_grid, &longi, &lat,
-                            grid_idx, NY, NX, NUM_SUPPORTING_POINTS_HORIZ, 2.0f);
+          interpol[i] = cpu_radially_interpolate_structured_horiz(pt_to_grid, grid_idx, NY, NX);
             grid_idx++;
         } else {
           interpol[i] = cpu_radially_interpolate_unstructured(buffer, &longi, &lat, NULL, num_data, dim, directions,
-                            2.0f, reinitiate, 4, &verbose);
+                            2.0f, reinitiate, NUM_SUPPORTING_POINTS, &verbose);
         }
         i++;
       }
@@ -1469,7 +1426,7 @@ void interpolate_var_vert(velo_grid *h_var_grid, map *maps, int idx, int z, char
     if (grid_type == STRUCTURED) {
       // Get the neighbors values of the mass points
       double nv = cpu_second();
-      get_neighbors_values_vert(h_var_grid, maps, idx, NY, NX, z, NUM_SUPPORTING_POINTS_VERT);
+      get_neighbors_values_vert(h_var_grid, maps, idx, NY, NX, z, 2);
       fprintf(stdout, "Time to get neighbors values (vert): %f sec.\n", cpu_second() - nv);
     }
 
@@ -1479,22 +1436,13 @@ void interpolate_var_vert(velo_grid *h_var_grid, map *maps, int idx, int z, char
       {
         float *v[1];
         cudaMemcpy(&(v[0]), &(d_var_grid[0].val), sizeof(float *), cudaMemcpyDeviceToHost);
-        cudaMemcpy(v[0], h_var_grid->val, (NY*NX*NUM_SUPPORTING_POINTS_VERT)*sizeof(float), cudaMemcpyHostToDevice);
+        cudaMemcpy(v[0], h_var_grid->val, (NY*NX*2)*sizeof(float), cudaMemcpyHostToDevice);
       }
     }
 
     double i_start = cpu_second();
     if (grid_type == STRUCTURED) {
-        float z_level;
-        float z_level_stag_under;
-        float z_level_stag_above;
-        z_level = maps[ZNU].variable->val[(NZ-1)-z];
-        z_level_stag_under = maps[ZNW].variable->val[(NZ_STAG-1)-z];
-        z_level_stag_above = maps[ZNW].variable->val[(NZ_STAG-1)-z-1];
-
-        gpu_radially_interpolate_structured_vert<<<grid, block>>>(d_var_grid, d_mass_grid,
-                                    NY, NX, z_level, z_level_stag_under, z_level_stag_above,
-                                    NUM_SUPPORTING_POINTS_VERT, 2.0f);
+        gpu_radially_interpolate_structured_vert<<<grid, block>>>(d_var_grid, d_mass_grid, NY, NX);
     } else {
         // TODO: Need to be implemented if we need that
     }
@@ -1595,8 +1543,7 @@ void interpolate_var_vert(velo_grid *h_var_grid, map *maps, int idx, int z, char
         float longi = maps[idx].longi->val[(y*maps[idx].longi->shape[2])+x];
         float lat   = maps[idx].lat->val[(y*maps[idx].lat->shape[2])+x];
         if (grid_type == STRUCTURED) {
-          interpol[i] = cpu_radially_interpolate_structured_vert(pt_to_grid, &longi, &lat,
-                            grid_idx, NY, NX, NUM_SUPPORTING_POINTS_VERT, 2.0f);
+          interpol[i] = cpu_radially_interpolate_structured_vert(pt_to_grid, grid_idx, NY, NX);
             grid_idx++;
         } else {
           // TODO: Need to be implemented if we need that
@@ -1682,7 +1629,12 @@ void compute_vert_vorticity(fd__container *h_vorticity, map *maps, int idx, int 
        float longi = maps[idx].longi->val[(y*NX)+x];
        float lat   = maps[idx].lat->val[(y*NX)+x];
        float vort  = h_vorticity->val[(y*NX)+x];
-       fprintf(f, "%f,%f,%f\n", longi, lat, vort);
+       if (VORTICITY_LIMITER) {
+         if (vort >= VORTICITY_LIMITER_LOW)
+          fprintf(f, "%f,%f,%f\n", longi, lat, vort);
+       } else {
+         fprintf(f, "%f,%f,%f\n", longi, lat, vort);
+       }
      }
     }
 
@@ -2406,33 +2358,22 @@ int process(char files[][MAX_STRING_LENGTH], uint num_files, bool no_interpol_ou
     if (grid_type == STRUCTURED) {
       // The storage for the neighbors in the x-wind and y-wind grids
       h_velo_u_grid = (velo_grid *)malloc(sizeof(velo_grid));
-      h_velo_u_grid->x = (float *)malloc((NY*NX*NUM_SUPPORTING_POINTS_HORIZ)*sizeof(float));
-      h_velo_u_grid->y = (float *)malloc((NY*NX*NUM_SUPPORTING_POINTS_HORIZ)*sizeof(float));
-      h_velo_u_grid->val = (float *)malloc((NY*NX*NUM_SUPPORTING_POINTS_HORIZ)*sizeof(float));
+      h_velo_u_grid->val = (float *)malloc((NY*NX*2)*sizeof(float));
 
       h_velo_v_grid = (velo_grid *)malloc(sizeof(velo_grid));
-      h_velo_v_grid->x = (float *)malloc((NY*NX*NUM_SUPPORTING_POINTS_HORIZ)*sizeof(float));
-      h_velo_v_grid->y = (float *)malloc((NY*NX*NUM_SUPPORTING_POINTS_HORIZ)*sizeof(float));
-      h_velo_v_grid->val = (float *)malloc((NY*NX*NUM_SUPPORTING_POINTS_HORIZ)*sizeof(float));
+      h_velo_v_grid->val = (float *)malloc((NY*NX*2)*sizeof(float));
 
       // The storage for the neighbors in the z-wind grid
       h_velo_w_grid = (velo_grid *)malloc(sizeof(velo_grid));
-      h_velo_w_grid->val = (float *)malloc((NY*NX*NUM_SUPPORTING_POINTS_VERT)*sizeof(float));
+      h_velo_w_grid->val = (float *)malloc((NY*NX*2)*sizeof(float));
 
       // The storage for the neighbors in the base geopotential grid
       h_base_geopot_grid = (velo_grid *)malloc(sizeof(velo_grid));
-      h_base_geopot_grid->val = (float *)malloc((NY*NX*NUM_SUPPORTING_POINTS_VERT)*sizeof(float));
+      h_base_geopot_grid->val = (float *)malloc((NY*NX*2)*sizeof(float));
 
       // The storage for the neighbors in the perturbation geopotential grids
       h_pert_geopot_grid = (velo_grid *)malloc(sizeof(velo_grid));
-      h_pert_geopot_grid->val = (float *)malloc((NY*NX*NUM_SUPPORTING_POINTS_VERT)*sizeof(float));
-
-      double nc = cpu_second();
-      // Get the neighbors coordinates of the mass points (horizontal)
-      char *data_name = (char *)"coordinates";
-      get_neighbors_val_horiz(h_velo_u_grid, h_velo_v_grid, maps, NY_STAG, NX_STAG, NY, NX,
-        NUM_SUPPORTING_POINTS_HORIZ, data_name, NULL);
-      fprintf(stdout, "Time to get neighbors coordinates in horizontal: %f sec.\n", cpu_second() - nc);
+      h_pert_geopot_grid->val = (float *)malloc((NY*NX*2)*sizeof(float));
     }
 
 #ifdef __NVCC__
@@ -2448,7 +2389,7 @@ int process(char files[][MAX_STRING_LENGTH], uint num_files, bool no_interpol_ou
       memcpy(h_velo_u_grid->y, xlat_u->val, (NY*NX_STAG)*sizeof(float));
       memcpy(h_velo_u_grid->val, u->val, (NZ*NY*NX_STAG)*sizeof(float));
    } else {
-      memset(h_velo_u_grid->val, 0.0f, (NY*NX*NUM_SUPPORTING_POINTS_HORIZ)*sizeof(float));
+      memset(h_velo_u_grid->val, 0.0f, (NY*NX*2)*sizeof(float));
     }
 
     if(cudaMalloc((velo_grid**)&d_velo_u_grid, sizeof(velo_grid)) != cudaSuccess) {
@@ -2461,38 +2402,26 @@ int process(char files[][MAX_STRING_LENGTH], uint num_files, bool no_interpol_ou
         exit(EXIT_FAILURE);
     }
 
-    {
+    if (grid_type == UNSTRUCTURED) {
       float *x[1];
-      if (grid_type == STRUCTURED) {
-        cudaMalloc(&(x[0]), (NY*NX*NUM_SUPPORTING_POINTS_HORIZ)*sizeof(float));
-        cudaMemcpy(&(d_velo_u_grid[0].x), &(x[0]), sizeof(float *), cudaMemcpyHostToDevice);
-        cudaMemcpy(x[0], h_velo_u_grid->x, (NY*NX*NUM_SUPPORTING_POINTS_HORIZ)*sizeof(float), cudaMemcpyHostToDevice);
-      } else {
-        cudaMalloc(&(x[0]), (NY*NX_STAG)*sizeof(float));
-        cudaMemcpy(&(d_velo_u_grid[0].x), &(x[0]), sizeof(float *), cudaMemcpyHostToDevice);
-        cudaMemcpy(x[0], xlong_u->val, (NY*NX_STAG)*sizeof(float), cudaMemcpyHostToDevice);
-      }
+      cudaMalloc(&(x[0]), (NY*NX_STAG)*sizeof(float));
+      cudaMemcpy(&(d_velo_u_grid[0].x), &(x[0]), sizeof(float *), cudaMemcpyHostToDevice);
+      cudaMemcpy(x[0], xlong_u->val, (NY*NX_STAG)*sizeof(float), cudaMemcpyHostToDevice);
     }
 
-    {
+    if (grid_type == UNSTRUCTURED) {
       float *y[1];
-      if (grid_type == STRUCTURED) {
-        cudaMalloc(&(y[0]), (NY*NX*NUM_SUPPORTING_POINTS_HORIZ)*sizeof(float));
-        cudaMemcpy(&(d_velo_u_grid[0].y), &(y[0]), sizeof(float *), cudaMemcpyHostToDevice);
-        cudaMemcpy(y[0], h_velo_u_grid->y, (NY*NX*NUM_SUPPORTING_POINTS_HORIZ)*sizeof(float), cudaMemcpyHostToDevice);
-      } else {
-        cudaMalloc(&(y[0]), (NY*NX_STAG)*sizeof(float));
-        cudaMemcpy(&(d_velo_u_grid[0].y), &(y[0]), sizeof(float *), cudaMemcpyHostToDevice);
-        cudaMemcpy(y[0], xlat_u->val, (NY*NX_STAG)*sizeof(float), cudaMemcpyHostToDevice);
-      }
+      cudaMalloc(&(y[0]), (NY*NX_STAG)*sizeof(float));
+      cudaMemcpy(&(d_velo_u_grid[0].y), &(y[0]), sizeof(float *), cudaMemcpyHostToDevice);
+      cudaMemcpy(y[0], xlat_u->val, (NY*NX_STAG)*sizeof(float), cudaMemcpyHostToDevice);
     }
 
     {
       float *v[1];
       if (grid_type == STRUCTURED) {
-        cudaMalloc(&(v[0]), (NY*NX*NUM_SUPPORTING_POINTS_HORIZ)*sizeof(float));
+        cudaMalloc(&(v[0]), (NY*NX*2)*sizeof(float));
         cudaMemcpy(&(d_velo_u_grid[0].val), &(v[0]), sizeof(float *), cudaMemcpyHostToDevice);
-        cudaMemset(v[0], 0.0f, (NY*NX*NUM_SUPPORTING_POINTS_HORIZ)*sizeof(float));
+        cudaMemset(v[0], 0.0f, (NY*NX*2)*sizeof(float));
       } else {
         cudaMalloc(&(v[0]), (NZ*NY*NX_STAG)*sizeof(float));
         cudaMemcpy(&(d_velo_u_grid[0].val), &(v[0]), sizeof(float *), cudaMemcpyHostToDevice);
@@ -2511,7 +2440,7 @@ int process(char files[][MAX_STRING_LENGTH], uint num_files, bool no_interpol_ou
       memcpy(h_velo_v_grid->y, xlat_v->val, (NY_STAG*NX)*sizeof(float));
       memcpy(h_velo_v_grid->val, v->val, (NZ*NY_STAG*NX)*sizeof(float));
     } else {
-      memset(h_velo_v_grid->val, 0.0f, (NY*NX*NUM_SUPPORTING_POINTS_HORIZ)*sizeof(float));
+      memset(h_velo_v_grid->val, 0.0f, (NY*NX*2)*sizeof(float));
     }
 
     if(cudaMalloc((velo_grid**)&d_velo_v_grid, sizeof(velo_grid)) != cudaSuccess) {
@@ -2524,38 +2453,26 @@ int process(char files[][MAX_STRING_LENGTH], uint num_files, bool no_interpol_ou
         exit(EXIT_FAILURE);
     }
 
-    {
-      float *x[1];
-      if (grid_type == STRUCTURED) {
-        cudaMalloc(&(x[0]), (NY*NX*NUM_SUPPORTING_POINTS_HORIZ)*sizeof(float));
-        cudaMemcpy(&(d_velo_v_grid[0].x), &(x[0]), sizeof(float *), cudaMemcpyHostToDevice);
-        cudaMemcpy(x[0], h_velo_v_grid->x, (NY*NX*NUM_SUPPORTING_POINTS_HORIZ)*sizeof(float), cudaMemcpyHostToDevice);
-      } else {
+    if (grid_type == UNSTRUCTURED) {
+        float *x[1];
         cudaMalloc(&(x[0]), (NY_STAG*NX)*sizeof(float));
         cudaMemcpy(&(d_velo_v_grid[0].x), &(x[0]), sizeof(float *), cudaMemcpyHostToDevice);
         cudaMemcpy(x[0], xlong_v->val, (NY_STAG*NX)*sizeof(float), cudaMemcpyHostToDevice);
-      }
     }
 
-    {
-      float *y[1];
-      if (grid_type == STRUCTURED) {
-        cudaMalloc(&(y[0]), (NY*NX*NUM_SUPPORTING_POINTS_HORIZ)*sizeof(float));
-        cudaMemcpy(&(d_velo_v_grid[0].y), &(y[0]), sizeof(float *), cudaMemcpyHostToDevice);
-        cudaMemcpy(y[0], h_velo_v_grid->y, (NY*NX*NUM_SUPPORTING_POINTS_HORIZ)*sizeof(float), cudaMemcpyHostToDevice);
-      } else {
+    if (grid_type == UNSTRUCTURED) {
+        float *y[1];
         cudaMalloc(&(y[0]), (NY_STAG*NX)*sizeof(float));
         cudaMemcpy(&(d_velo_v_grid[0].y), &(y[0]), sizeof(float *), cudaMemcpyHostToDevice);
         cudaMemcpy(y[0], xlat_v->val, (NY_STAG*NX)*sizeof(float), cudaMemcpyHostToDevice);
-      }
     }
 
     {
       float *vv[1];
       if (grid_type == STRUCTURED) {
-        cudaMalloc(&(vv[0]), (NY*NX*NUM_SUPPORTING_POINTS_HORIZ)*sizeof(float));
+        cudaMalloc(&(vv[0]), (NY*NX*2)*sizeof(float));
         cudaMemcpy(&(d_velo_v_grid[0].val), &(vv[0]), sizeof(float *), cudaMemcpyHostToDevice);
-        cudaMemset(vv[0], 0.0f, (NY*NX*NUM_SUPPORTING_POINTS_HORIZ)*sizeof(float));
+        cudaMemset(vv[0], 0.0f, (NY*NX*2)*sizeof(float));
       } else {
         cudaMalloc(&(vv[0]), (NZ*NY_STAG*NX)*sizeof(float));
         cudaMemcpy(&(d_velo_v_grid[0].val), &(vv[0]), sizeof(float *), cudaMemcpyHostToDevice);
@@ -2567,7 +2484,7 @@ int process(char files[][MAX_STRING_LENGTH], uint num_files, bool no_interpol_ou
     if (grid_type == UNSTRUCTURED) {
       fprintf(stdout, "Currently interpolation in a three dimensional unstructured grid is not fully implemented.\n");
    } else {
-      memset(h_velo_w_grid->val, 0.0f, (NY*NX*NUM_SUPPORTING_POINTS_VERT)*sizeof(float));
+      memset(h_velo_w_grid->val, 0.0f, (NY*NX*2)*sizeof(float));
     }
 
     if(cudaMalloc((velo_grid**)&d_velo_w_grid, sizeof(velo_grid)) != cudaSuccess) {
@@ -2583,9 +2500,9 @@ int process(char files[][MAX_STRING_LENGTH], uint num_files, bool no_interpol_ou
     {
       float *v[1];
       if (grid_type == STRUCTURED) {
-        cudaMalloc(&(v[0]), (NY*NX*NUM_SUPPORTING_POINTS_VERT)*sizeof(float));
+        cudaMalloc(&(v[0]), (NY*NX*2)*sizeof(float));
         cudaMemcpy(&(d_velo_w_grid[0].val), &(v[0]), sizeof(float *), cudaMemcpyHostToDevice);
-        cudaMemset(v[0], 0.0f, (NY*NX*NUM_SUPPORTING_POINTS_VERT)*sizeof(float));
+        cudaMemset(v[0], 0.0f, (NY*NX*2)*sizeof(float));
       } else {
         fprintf(stdout, "Currently interpolation in a three dimensional unstructured grid is not fully implemented yet.\n");
       }
@@ -2595,7 +2512,7 @@ int process(char files[][MAX_STRING_LENGTH], uint num_files, bool no_interpol_ou
     if (grid_type == UNSTRUCTURED) {
       fprintf(stdout, "Currently interpolation in a three dimensional unstructured grid is not fully implemented.\n");
     } else {
-      memset(h_base_geopot_grid->val, 0.0f, (NY*NX*NUM_SUPPORTING_POINTS_VERT)*sizeof(float));
+      memset(h_base_geopot_grid->val, 0.0f, (NY*NX*2)*sizeof(float));
     }
 
     if(cudaMalloc((velo_grid**)&d_base_geopot_grid, sizeof(velo_grid)) != cudaSuccess) {
@@ -2611,9 +2528,9 @@ int process(char files[][MAX_STRING_LENGTH], uint num_files, bool no_interpol_ou
     {
       float *v[1];
       if (grid_type == STRUCTURED) {
-        cudaMalloc(&(v[0]), (NY*NX*NUM_SUPPORTING_POINTS_VERT)*sizeof(float));
+        cudaMalloc(&(v[0]), (NY*NX*2)*sizeof(float));
         cudaMemcpy(&(d_base_geopot_grid[0].val), &(v[0]), sizeof(float *), cudaMemcpyHostToDevice);
-        cudaMemset(v[0], 0.0f, (NY*NX*NUM_SUPPORTING_POINTS_VERT)*sizeof(float));
+        cudaMemset(v[0], 0.0f, (NY*NX*2)*sizeof(float));
       } else {
         fprintf(stdout, "Currently interpolation in a three dimensional unstructured grid is not fully implemented yet.\n");
       }
@@ -2623,7 +2540,7 @@ int process(char files[][MAX_STRING_LENGTH], uint num_files, bool no_interpol_ou
     if (grid_type == UNSTRUCTURED) {
       fprintf(stdout, "Currently interpolation in a three dimensional unstructured grid is not fully implemented.\n");
     } else {
-      memset(h_pert_geopot_grid->val, 0.0f, (NY*NX*NUM_SUPPORTING_POINTS_VERT)*sizeof(float));
+      memset(h_pert_geopot_grid->val, 0.0f, (NY*NX*2)*sizeof(float));
     }
 
     if(cudaMalloc((velo_grid**)&d_pert_geopot_grid, sizeof(velo_grid)) != cudaSuccess) {
@@ -2639,9 +2556,9 @@ int process(char files[][MAX_STRING_LENGTH], uint num_files, bool no_interpol_ou
     {
       float *v[1];
       if (grid_type == STRUCTURED) {
-        cudaMalloc(&(v[0]), (NY*NX*NUM_SUPPORTING_POINTS_VERT)*sizeof(float));
+        cudaMalloc(&(v[0]), (NY*NX*2)*sizeof(float));
         cudaMemcpy(&(d_pert_geopot_grid[0].val), &(v[0]), sizeof(float *), cudaMemcpyHostToDevice);
-        cudaMemset(v[0], 0.0f, (NY*NX*NUM_SUPPORTING_POINTS_VERT)*sizeof(float));
+        cudaMemset(v[0], 0.0f, (NY*NX*2)*sizeof(float));
       } else {
         fprintf(stdout, "Currently interpolation in a three dimensional unstructured grid is not fully implemented yet.\n");
       }
@@ -2649,16 +2566,18 @@ int process(char files[][MAX_STRING_LENGTH], uint num_files, bool no_interpol_ou
 
     // The mass grid memory allocs
     h_mass_grid = (mass_grid *)malloc(sizeof(mass_grid));
-    h_mass_grid->x = (float *)malloc((NY*NX)*sizeof(float));
-    h_mass_grid->y = (float *)malloc((NY*NX)*sizeof(float));
+    if (grid_type == UNSTRUCTURED) {
+      h_mass_grid->x = (float *)malloc((NY*NX)*sizeof(float));
+      h_mass_grid->y = (float *)malloc((NY*NX)*sizeof(float));
+      memcpy(h_mass_grid->x, xlong->val, (NY*NX)*sizeof(float));
+      memcpy(h_mass_grid->y, xlat->val, (NY*NX)*sizeof(float));
+    }
     h_mass_grid->u = (float *)malloc((NY*NX)*sizeof(float));
     h_mass_grid->v = (float *)malloc((NY*NX)*sizeof(float));
     h_mass_grid->w = (float *)malloc((NY*NX)*sizeof(float));
     h_mass_grid->ph = (float *)malloc((NY*NX)*sizeof(float));
     h_mass_grid->phb = (float *)malloc((NY*NX)*sizeof(float));
 
-    memcpy(h_mass_grid->x, xlong->val, (NY*NX)*sizeof(float));
-    memcpy(h_mass_grid->y, xlat->val, (NY*NX)*sizeof(float));
     memset(h_mass_grid->u, 0.0f, (NY*NX)*sizeof(float));
     memset(h_mass_grid->v, 0.0f, (NY*NX)*sizeof(float));
     memset(h_mass_grid->w, 0.0f, (NY*NX)*sizeof(float));
@@ -2674,13 +2593,12 @@ int process(char files[][MAX_STRING_LENGTH], uint num_files, bool no_interpol_ou
         fprintf(stderr, "Memory copy <mass grid> failure to device.\n");
         exit(EXIT_FAILURE);
     }
-    {
+    if (grid_type == UNSTRUCTURED) {
       float *x[1];
       cudaMalloc(&(x[0]), (NY*NX)*sizeof(float));
       cudaMemcpy(&(d_mass_grid[0].x), &(x[0]), sizeof(float *), cudaMemcpyHostToDevice);
       cudaMemcpy(x[0], xlong->val, (NY*NX)*sizeof(float), cudaMemcpyHostToDevice);
-    }
-    {
+
       float *y[1];
       cudaMalloc(&(y[0]), (NY*NX)*sizeof(float));
       cudaMemcpy(&(d_mass_grid[0].y), &(y[0]), sizeof(float *), cudaMemcpyHostToDevice);
@@ -2861,13 +2779,9 @@ int process(char files[][MAX_STRING_LENGTH], uint num_files, bool no_interpol_ou
     }
 
     if (grid_type == STRUCTURED) {
-      free(h_velo_u_grid->x);
-      free(h_velo_u_grid->y);
       free(h_velo_u_grid->val);
       free(h_velo_u_grid);
 
-      free(h_velo_v_grid->x);
-      free(h_velo_v_grid->y);
       free(h_velo_v_grid->val);
       free(h_velo_v_grid);
 
@@ -2903,8 +2817,10 @@ int process(char files[][MAX_STRING_LENGTH], uint num_files, bool no_interpol_ou
       free(h_pert_geopot_grid);
     }
 
-    free(h_mass_grid->x);
-    free(h_mass_grid->y);
+    if (grid_type == UNSTRUCTURED) {
+      free(h_mass_grid->x);
+      free(h_mass_grid->y);
+    }
     free(h_mass_grid->u);
     free(h_mass_grid->v);
     free(h_mass_grid->w);
@@ -2912,16 +2828,16 @@ int process(char files[][MAX_STRING_LENGTH], uint num_files, bool no_interpol_ou
     free(h_mass_grid->phb);
     free(h_mass_grid);
 
-    {
+    if (grid_type == UNSTRUCTURED) {
       float *x[1];
       cudaMemcpy(&(x[0]), &(d_velo_u_grid[0].x), sizeof(float *), cudaMemcpyDeviceToHost);
       cudaFree(x[0]);
-    }
-    {
+
       float *y[1];
       cudaMemcpy(&(y[0]), &(d_velo_u_grid[0].y), sizeof(float *), cudaMemcpyDeviceToHost);
       cudaFree(y[0]);
     }
+
     {
       float *v[1];
       cudaMemcpy(&(v[0]), &(d_velo_u_grid[0].val), sizeof(float *), cudaMemcpyDeviceToHost);
@@ -2929,16 +2845,16 @@ int process(char files[][MAX_STRING_LENGTH], uint num_files, bool no_interpol_ou
     }
     cudaFree(d_velo_u_grid);
 
-    {
+    if (grid_type == UNSTRUCTURED) {
       float *x[1];
       cudaMemcpy(&(x[0]), &(d_velo_v_grid[0].x), sizeof(float *), cudaMemcpyDeviceToHost);
       cudaFree(x[0]);
-    }
-    {
+
       float *y[1];
       cudaMemcpy(&(y[0]), &(d_velo_v_grid[0].y), sizeof(float *), cudaMemcpyDeviceToHost);
       cudaFree(y[0]);
     }
+
     {
       float *v[1];
       cudaMemcpy(&(v[0]), &(d_velo_v_grid[0].val), sizeof(float *), cudaMemcpyDeviceToHost);
@@ -2967,16 +2883,16 @@ int process(char files[][MAX_STRING_LENGTH], uint num_files, bool no_interpol_ou
     }
     cudaFree(d_pert_geopot_grid);
 
-    {
+    if (grid_type == UNSTRUCTURED) {
       float *x[1];
       cudaMemcpy(&(x[0]), &(d_mass_grid[0].x), sizeof(float *), cudaMemcpyDeviceToHost);
       cudaFree(x[0]);
-    }
-    {
+
       float *y[1];
       cudaMemcpy(&(y[0]), &(d_mass_grid[0].y), sizeof(float *), cudaMemcpyDeviceToHost);
       cudaFree(y[0]);
     }
+
     {
       float *u[1];
       cudaMemcpy(&(u[0]), &(d_mass_grid[0].u), sizeof(float *), cudaMemcpyDeviceToHost);
@@ -3077,6 +2993,7 @@ int main (int argc, const char *argv[]) {
   uint num_files;
   uint num_netcdf_files = 0;
 
+  // Whether to output the non interpaled U and V
   bool no_interpol_out = false;
   if (argv[1] != NULL) {
     if (strcmp(argv[1], "-no-interpol-out") == 0) {

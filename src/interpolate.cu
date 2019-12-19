@@ -1,6 +1,6 @@
 #include "interpolate.h"
 
-float radially_interpolate_cpu(float **data,
+float cpu_radially_interpolate_unstructured(float **data,
                                float *xi,
                                float *yi,
                                float *zi,
@@ -154,40 +154,6 @@ float radially_interpolate_cpu(float **data,
 
     return interpolated_value;
   }
-
-float cpu_radially_interpolate_structured_horiz(velo_grid *velo_grid, float *xi, float *yi,
-            int idx, const int NY, const int NX, const int num_support_points, const float exponent) {
-
-    float interpolated_value;
-
-    // Four supporting points required
-    float distance_to_point[4];
-
-    for (int i = 0; i < num_support_points; i++) {
-      float radius = 0.0f;
-      float ux = velo_grid->x[((NY*NX)*i)+idx];
-      float uy = velo_grid->y[((NY*NX)*i)+idx];
-      radius = radius + (*xi-ux)*(*xi-ux);
-      radius = radius + (*yi-uy)*(*yi-uy);
-      distance_to_point[i] = radius;
-    }
-
-    // Interpolate
-    float weight_sum = 0.0f;
-    interpolated_value = 0.0f;
-    for (int i = 0; i < num_support_points; i++) {
-      float weight = powf(distance_to_point[i],-exponent);
-      interpolated_value = interpolated_value + weight * velo_grid->val[((NY*NX)*i)+idx];
-      weight_sum = weight_sum + weight;
-    }
-
-    interpolated_value = interpolated_value / weight_sum;
-    return interpolated_value;
-}
-
-float cpu_radially_interpolate_structured_vert(velo_grid *velo_grid, float *xi, float *yi,
-            int idx, const int NY, const int NX, const int num_support_points, const float exponent) {
-}
 
 #ifdef __NVCC__
 
@@ -455,92 +421,33 @@ __global__ void gpu_radially_interpolate_unstructured(velo_grid *u_grid, velo_gr
 }
 
 __global__ void gpu_radially_interpolate_structured_horiz(velo_grid *u_grid, velo_grid *v_grid, mass_grid *m_grid,
-   const int NY, const int NX, const int num_support_points, const float exponent) {
-
-    float interpolated_value_u;
-    float interpolated_value_v;
-
-    // Four supporting points required
-    float distance_to_point_u[4];
-    float distance_to_point_v[4];
+   const int NY, const int NX) {
 
     int IDX = blockIdx.x * blockDim.x + threadIdx.x;
 
     if (IDX >= (NY*NX)) return;
 
-    for (int i = 0; i < num_support_points; i++) {
-      float radius_u = 0.0f;
-      float ux = u_grid->x[((NY*NX)*i)+IDX];
-      float uy = u_grid->y[((NY*NX)*i)+IDX];
-      radius_u = radius_u + (m_grid->x[IDX]-ux)*(m_grid->x[IDX]-ux);
-      radius_u = radius_u + (m_grid->y[IDX]-uy)*(m_grid->y[IDX]-uy);
-
-      float radius_v = 0.0f;
-      float vx = v_grid->x[((NY*NX)*i)+IDX];
-      float vy = v_grid->y[((NY*NX)*i)+IDX];
-      radius_v = radius_v + (m_grid->x[IDX]-vx)*(m_grid->x[IDX]-vx);
-      radius_v = radius_v + (m_grid->y[IDX]-vy)*(m_grid->y[IDX]-vy);
-
-      distance_to_point_u[i] = radius_u;
-      distance_to_point_v[i] = radius_v;
-    }
-
-    // Interpolate
-    float weight_sum_u = 0.0f;
-    float weight_sum_v = 0.0f;
-    interpolated_value_u = 0.0f;
-    interpolated_value_v = 0.0f;
-    for (int i = 0; i < num_support_points; i++) {
-      float weight = powf(distance_to_point_u[i],-exponent);
-      interpolated_value_u = interpolated_value_u + weight * u_grid->val[((NY*NX)*i)+IDX];
-      weight_sum_u = weight_sum_u + weight;
-    }
-    for (int i = 0; i < num_support_points; i++) {
-      float weight = powf(distance_to_point_v[i],-exponent);
-      interpolated_value_v = interpolated_value_v + weight * v_grid->val[((NY*NX)*i)+IDX];
-      weight_sum_v = weight_sum_v + weight;
-    }
-
-    interpolated_value_u = interpolated_value_u / weight_sum_u;
-    interpolated_value_v = interpolated_value_v / weight_sum_v;
-
-    m_grid->u[IDX] = interpolated_value_u;
-    m_grid->v[IDX] = interpolated_value_v;
+    m_grid->u[IDX] = 0.5f * (u_grid->val[IDX] + u_grid->val[((NY*NX)*1)+IDX]);
+    m_grid->v[IDX] = 0.5f * (v_grid->val[IDX] + v_grid->val[((NY*NX)*1)+IDX]);
 }
 
 __global__ void gpu_radially_interpolate_structured_vert(velo_grid *w_grid, mass_grid *m_grid,
-      const int NY, const int NX, float z_level, float z_level_stag_under, float z_level_stag_above,
-      const int num_support_points, const float exponent) {
-
-    float interpolated_value;
-
-    // Two supporting points required
-    float distance_to_point[2];
+      const int NY, const int NX) {
 
     int IDX = blockIdx.x * blockDim.x + threadIdx.x;
 
     if (IDX >= (NY*NX)) return;
 
-    float z_levels_stag[2];
-    z_levels_stag[0] = z_level_stag_under;
-    z_levels_stag[1] = z_level_stag_above;
+    m_grid->w[IDX] = 0.5f * (w_grid->val[IDX] + w_grid->val[((NY*NX)*1)+IDX]);
+}
 
-    for (int i = 0; i < num_support_points; i++) {
-      float radius = 0.0f;
-      radius = radius + (z_level-z_levels_stag[i])*(z_level-z_levels_stag[i]);
-      distance_to_point[i] = radius;
-    }
+float cpu_radially_interpolate_structured_horiz(velo_grid *velo_grid, int idx, const int NY, const int NX) {
+    
+    return 0.5f * (velo_grid->val[idx] + velo_grid->val[((NY*NX)*1)+idx]);
+}
 
-    // Interpolate
-    float weight_sum = 0.0f;
-    interpolated_value = 0.0f;
-    for (int i = 0; i < num_support_points; i++) {
-      float weight = powf(distance_to_point[i],-exponent);
-      interpolated_value = interpolated_value + weight * w_grid->val[((NY*NX)*i)+IDX];
-      weight_sum = weight_sum + weight;
-    }
+float cpu_radially_interpolate_structured_vert(velo_grid *w_grid, int idx, const int NY, const int NX) {
 
-    interpolated_value = interpolated_value / weight_sum;
-    m_grid->w[IDX] = interpolated_value;
+    return 0.5f * (w_grid->val[idx] + w_grid->val[((NY*NX)*1)+idx]);
 }
 #endif

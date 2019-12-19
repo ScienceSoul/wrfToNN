@@ -18,13 +18,9 @@
 // Stack size
 #define STACK_SIZE 16 // MB
 
-// The number of supporting points for the interpolation in the
-// horizontal plane
-#define NUM_SUPPORTING_POINTS_HORIZ 2
-
-// The number of supporting points for tehe interpolation in the
-// vertical plane
-#define NUM_SUPPORTING_POINTS_VERT 2
+// The number of supporting points for the interpolation
+// in an unstructured grid
+#define NUM_SUPPORTING_POINTS 4
 
 #define DEF_BLOCK_SIZE 128
 
@@ -60,6 +56,10 @@ enum {
 
 // -----------------------------------------------------
 float VORTICITY_SCALING = 1.0e3f;
+
+// For visualization purpose
+bool  VORTICITY_LIMITER = false;
+float VORTICITY_LIMITER_LOW = 1.0f;
 // -----------------------------------------------------
 
 // ------------------------------------------------------

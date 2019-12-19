@@ -30,11 +30,10 @@ __global__ void gpu_radially_interpolate_unstructured(velo_grid *u_grid, velo_gr
    const int num_support_points, const float exponent);
 
 __global__ void gpu_radially_interpolate_structured_horiz(velo_grid *u_grid, velo_grid *v_grid, mass_grid *m_grid,
-   const int NY, const int NX, const int num_support_points, const float exponent);
+   const int NY, const int NX);
 
-__global__ void gpu_radially_interpolate_structured_vert(velo_grid *w_grid, mass_grid *m_grid,
-      const int NY, const int NX, float z_level, float z_level_stag_under, float z_level_stag_above,
-      const int num_support_points, const float exponent);
+__global__ void gpu_radially_interpolate_structured_vert(velo_grid *w_grid, mass_grid *m_grid, const int NY, 
+   const int NX);
 
 #endif
 
@@ -50,10 +49,8 @@ float cpu_radially_interpolate_unstructured(float **data,
                            int num_support_points,
                            bool *verbose);
 
-float cpu_radially_interpolate_structured_horiz(velo_grid *velo_grid, float *xi, float *yi,
-            int idx, const int NY, const int NX, const int num_support_points, const float exponent);
+float cpu_radially_interpolate_structured_horiz(velo_grid *velo_grid, int idx, const int NY, const int NX);
 
-float cpu_radially_interpolate_structured_vert(velo_grid *velo_grid, float *xi, float *yi,
-            int idx, const int NY, const int NX, const int num_support_points, const float exponent);
+float cpu_radially_interpolate_structured_vert(velo_grid *velo_grid, int idx, const int NY, const int NX);
 
 #endif
