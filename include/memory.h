@@ -25,8 +25,6 @@ typedef struct map {
   tensor *lat;
   tensor *mass_longi;
   tensor *mass_lat;
-  float *buffer1;
-  float *buffer2;
   bool active;    // If true, the variable is output
   bool used;      // If true, the variale is only loaded but not output
 } map;
@@ -42,5 +40,8 @@ float ****allocate_4d(uint dim1, uint dim2, uint dim3, uint dim4);
 void deallocate_2d(float **t, uint dim1);
 void deallocate_3d(float ***t, uint dim1, uint dim2);
 void deallocate_4d(float ****t, uint dim1, uint dim2, uint dim3);
+
+int minf(int x, int y);
+int maxf(int x, int y);
 
 #endif

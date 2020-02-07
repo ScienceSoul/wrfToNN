@@ -85,12 +85,6 @@ tensor *rel_vert_vort = NULL;
 // ------------------------------------------------------
 
 // ------------------------------------------------------
-// The finite difference tags
-// ------------------------------------------------------
-fd_tags *domain_tags = NULL;
-// ------------------------------------------------------
-
-// ------------------------------------------------------
 // Used for CUDA when available
 // ------------------------------------------------------
 #ifdef __NVCC__
@@ -636,19 +630,18 @@ void set_maps_active(map *maps) {
 // ----------------------------------------------------------------------------------------
 // This routine checks dependency between variables, i.e. it makes sure that variables are
 // computed in the right order if there is a dependency between them.
-// It may seeem not really needed since the order to compute the variables is currenhtly
+// It may seem not really needed since the order to compute the variables is currenhtly
 // hard coded. However this routine will be usefull when we will load what to compute from
 // an exteral source in which the order may be arbitrary defined.
 // NOTE: EXPERIMENTAL
 // ----------------------------------------------------------------------------------------
 void check_depedencies(map *maps) {
 
-  if (!maps[COR_EAST].active && !maps[COR_NORTH].active && !maps[ABS_VERT_VORT].active &&
-      !maps[GEOPOTENTIAL].active) {
+  if (!maps[COR_EAST].active && !maps[COR_NORTH].active && !maps[GEOPOTENTIAL].active) {
         return; // Nothing to do
   }
 
-  // Get the position in the map of U, V, PH, PHB and ABS_VERT_VORT
+  // Get the position in the map of U, V, PH and PHB
   int u_idx = -1;
   int v_idx = -1;
   int ph_idx = -1;
@@ -663,7 +656,6 @@ void check_depedencies(map *maps) {
   bool failure = false;
   if (maps[COR_EAST].active && v_idx < 0) failure = true;
   if (maps[COR_NORTH].active && u_idx < 0) failure = true;
-  if (maps[ABS_VERT_VORT].active && (u_idx < 0 || v_idx < 0)) failure = true;
   if (maps[GEOPOTENTIAL].active && (ph_idx < 0 || phb_idx < 0)) failure = true;
   if (failure) {
     fprintf(stderr, "Dependency check failure due to wrong map. A dependent vartiable is computed but ",
@@ -682,19 +674,6 @@ void check_depedencies(map *maps) {
     if (strcmp(maps[i].name, "COR_NORTH") == 0 && maps[i].active) {
       if (i < u_idx) {
         fprintf(stderr, "ERROR: variable %s being defined too early in the maps so will be computed before U.\n",
-                maps[i].name);
-        exit(EXIT_FAILURE);
-      }
-    }
-
-    if (strcmp(maps[i].name, "ABS_VERT_VORT") == 0 && maps[i].active) {
-      if (i < u_idx) {
-        fprintf(stderr, "ERROR: variable %s being defined too early in the maps so will be computed before U.\n",
-                maps[i].name);
-        exit(EXIT_FAILURE);
-      }
-      if (i < v_idx) {
-        fprintf(stderr, "ERROR: variable %s being defined too early in the maps so will be computed before V.\n",
                 maps[i].name);
         exit(EXIT_FAILURE);
       }
@@ -1273,37 +1252,6 @@ void interpolate_wind_velo_horiz(map *maps, int idx, int z, char file[][MAX_STRI
       }
     }
 
-    // If the absolute/relative vertical vorticity is computed, store here
-    // the interpolated velocities
-    if (maps[ABS_VERT_VORT].active) {
-      uint nx = 0;
-      uint ny = 0;
-      get_horizontal_dims(ABS_VERT_VORT, &nx, &ny);
-
-      for (int y = 0; y < ny; y++) {
-        for (int x = 0; x <nx; x++) {
-          float u_val = h_mass_grid->u[(y*nx)+x];
-          float v_val = h_mass_grid->v[(y*nx)+x];
-          maps[ABS_VERT_VORT].buffer1[(z*(ny*nx))+((y*nx)+x)] = u_val;
-          maps[ABS_VERT_VORT].buffer2[(z*(ny*nx))+((y*nx)+x)] = v_val;
-        }
-      }
-    }
-    if (maps[REL_VERT_VORT].active) {
-      uint nx = 0;
-      uint ny = 0;
-      get_horizontal_dims(REL_VERT_VORT, &nx, &ny);
-
-      for (int y = 0; y < ny; y++) {
-        for (int x = 0; x <nx; x++) {
-          float u_val = h_mass_grid->u[(y*nx)+x];
-          float v_val = h_mass_grid->v[(y*nx)+x];
-          maps[REL_VERT_VORT].buffer1[(z*(ny*nx))+((y*nx)+x)] = u_val;
-          maps[REL_VERT_VORT].buffer2[(z*(ny*nx))+((y*nx)+x)] = v_val;
-        }
-      }
-    }
-
 #else
     int num_data;
     int dim = 2;
@@ -1594,20 +1542,21 @@ void compute_vert_vorticity(fd__container *h_vorticity, map *maps, int idx, int 
     fprintf(stdout, "( ------ Compute %s at layer %d\n", maps[idx].name, z);
 
     // Get the stencils values
-    get_stencils_values(domain_tags, h_vorticity, maps[idx].buffer2, maps[idx].buffer1, NY, NX, z);
+    get_stencils_values(h_vorticity, maps[V].variable->val, maps[U].variable->val, dx, dy, NY, NX, NY_STAG, 
+                          NX_STAG, z);
 
 #ifdef __NVCC__
     {
       float *v[1];
       cudaMemcpy(&(v[0]), &(d_vorticity[0].stencils_val), sizeof(float *), cudaMemcpyDeviceToHost);
-      cudaMemcpy(v[0], h_vorticity->stencils_val, (6*NY*NX)*sizeof(float), cudaMemcpyHostToDevice);
+      cudaMemcpy(v[0], h_vorticity->stencils_val, (10*NY*NX)*sizeof(float), cudaMemcpyHostToDevice);
     }
 
     double i_start = cpu_second();
     if (absolute) {
-      gpu_compute_abs_vert_vort<<<grid, block>>>(d_vorticity, NY, NX, dy, dx, VORTICITY_SCALING);
+      gpu_compute_abs_vert_vort<<<grid, block>>>(d_vorticity, NY, NX, VORTICITY_SCALING);
     } else {
-      gpu_compute_rel_vert_vort<<<grid, block>>>(d_vorticity, NY, NX, dy, dx, VORTICITY_SCALING);
+      gpu_compute_rel_vert_vort<<<grid, block>>>(d_vorticity, NY, NX, VORTICITY_SCALING);
     }
 
     cudaDeviceSynchronize();
@@ -2303,17 +2252,6 @@ int process(char files[][MAX_STRING_LENGTH], uint num_files, bool no_interpol_ou
       fprintf(stdout, "%f %f\n", d_long*180.0f/M_PI, d_lat*180.0f/M_PI);
     }
 
-    // If the vorticity field is computed, set the fd tags here
-    // Memory allocation using the mass points dimensions
-    if (maps[ABS_VERT_VORT].active || maps[REL_VERT_VORT].active) {
-      domain_tags = allocate_fd_tags(NY*NX);
-      int i = set_fd_tags(domain_tags, NY, NX);
-      if (i > NY*NX) {
-        fprintf(stdout, "Tags processing returns bigger number of nodes than in grid: %d.\n", i);
-        exit(EXIT_FAILURE);
-      }
-    }
-
     // If required, compute the full pressure here
     if (maps[PRESSURE].active) {
       float *p = maps[P].variable->val;
@@ -2628,10 +2566,10 @@ int process(char files[][MAX_STRING_LENGTH], uint num_files, bool no_interpol_ou
     if (maps[ABS_VERT_VORT].active) {
       h_abs_vert_vort = (fd_container *) malloc(sizeof(fd_container));
       h_abs_vert_vort->val = (float *)malloc((NY*NX)*sizeof(float));
-      h_abs_vert_vort->stencils_val = (float *)malloc((6*NY*NX)*sizeof(float));
+      h_abs_vert_vort->stencils_val = (float *)malloc((10*NY*NX)*sizeof(float));
       h_abs_vert_vort->buffer = (float *)malloc((NY*NX)*sizeof(float));
       memset(h_abs_vert_vort->val, 0.0f, (NY*NX)*sizeof(float));
-      memset(h_abs_vert_vort->stencils_val, 0.0f, (6*NY*NX)*sizeof(float));
+      memset(h_abs_vert_vort->stencils_val, 0.0f, (10*NY*NX)*sizeof(float));
       memset(h_abs_vert_vort->buffer, 0.0f, (NY*NX)*sizeof(float));
 #ifdef __NVCC__
       if (cudaMalloc((fd_container**)&d_abs_vert_vort, sizeof(fd_container)) != cudaSuccess) {
@@ -2651,9 +2589,9 @@ int process(char files[][MAX_STRING_LENGTH], uint num_files, bool no_interpol_ou
       }
       {
         float *v[1];
-        cudaMalloc(&(v[0]), (6*NY*NX)*sizeof(float));
+        cudaMalloc(&(v[0]), (10*NY*NX)*sizeof(float));
         cudaMemcpy(&(d_abs_vert_vort[0].stencils_val), &(v[0]), sizeof(float *), cudaMemcpyHostToDevice);
-        cudaMemset(v[0], 0.0f, (6*NY*NX)*sizeof(float));
+        cudaMemset(v[0], 0.0f, (10*NY*NX)*sizeof(float));
       }
       {
         float *v[1];
@@ -2661,10 +2599,6 @@ int process(char files[][MAX_STRING_LENGTH], uint num_files, bool no_interpol_ou
         cudaMemcpy(&(d_abs_vert_vort[0].buffer), &(v[0]), sizeof(float *), cudaMemcpyHostToDevice);
         cudaMemset(v[0], 0.0f, (NY*NX)*sizeof(float));
       }
-
-      // Allocate space to store (U,V)
-      maps[ABS_VERT_VORT].buffer1 = (float *)malloc((NZ*NY*NX)*sizeof(float));
-      maps[ABS_VERT_VORT].buffer2 = (float *)malloc((NZ*NY*NX)*sizeof(float));
 
       // Copy the values of the latitude to the device
       {
@@ -2681,9 +2615,9 @@ int process(char files[][MAX_STRING_LENGTH], uint num_files, bool no_interpol_ou
     if (maps[REL_VERT_VORT].active) {
       h_rel_vert_vort = (fd_container *)malloc(sizeof(fd_container));
       h_rel_vert_vort->val = (float *)malloc((NY*NX)*sizeof(float));
-      h_rel_vert_vort->stencils_val = (float *)malloc((6*NY*NX)*sizeof(float));
+      h_rel_vert_vort->stencils_val = (float *)malloc((10*NY*NX)*sizeof(float));
       memset(h_rel_vert_vort->val, 0.0f, (NY*NX)*sizeof(float));
-      memset(h_rel_vert_vort->stencils_val, 0.0f, (6*NY*NX)*sizeof(float));
+      memset(h_rel_vert_vort->stencils_val, 0.0f, (10*NY*NX)*sizeof(float));
 #ifdef __NVCC__
       if (cudaMalloc((fd_container**)&d_rel_vert_vort, sizeof(fd_container)) != cudaSuccess) {
         fprintf(stderr, "Memory allocation failure for rel. vert. vorticity on device.\n");
@@ -2702,17 +2636,88 @@ int process(char files[][MAX_STRING_LENGTH], uint num_files, bool no_interpol_ou
      }
      {
        float *v[1];
-       cudaMalloc(&(v[0]), (6*NY*NX)*sizeof(float));
+       cudaMalloc(&(v[0]), (10*NY*NX)*sizeof(float));
        cudaMemcpy(&(d_rel_vert_vort[0].stencils_val), &(v[0]), sizeof(float *), cudaMemcpyHostToDevice);
-       cudaMemset(v[0], 0.0f, (6*NY*NX)*sizeof(float));
+       cudaMemset(v[0], 0.0f, (10*NY*NX)*sizeof(float));
      }
 
-      // Allocate space to store (U,V)
-      maps[REL_VERT_VORT].buffer1 = (float *)malloc((NZ*NY*NX)*sizeof(float));
-      maps[REL_VERT_VORT].buffer2 = (float *)malloc((NZ*NY*NX)*sizeof(float));
 #else
       fprintf(stderr, "Computing the relative vertical vorticity is not implemented in serial yet.\n");
 #endif
+    }
+
+    {
+      int retval;
+      int varid;
+
+      rank = 3;
+      shape[0] = NT; shape[1] = NY; shape[2] = NX_STAG;
+      tensor *msfu = allocate_tensor(shape, rank, NULL);
+
+      shape[0] = NT; shape[1] = NY_STAG; shape[2] = NX;
+      tensor *msfv = allocate_tensor(shape, rank, NULL);
+      
+      shape[0] = NT; shape[1] = NY; shape[2] = NX;
+      tensor *msft = allocate_tensor(shape, rank, NULL);
+
+      retval = nc_inq_varid(ncid, "MAPFAC_U", &varid);
+      retval = nc_get_var_float(ncid, varid, msfu->val);
+
+      retval = nc_inq_varid(ncid, "MAPFAC_V", &varid);
+      retval = nc_get_var_float(ncid, varid, msfv->val);
+
+      retval = nc_inq_varid(ncid, "MAPFAC_M", &varid);
+      retval = nc_get_var_float(ncid, varid, msft->val);
+
+      char *path = "/media/seddik/ST01/wrf_run/test";
+      char file[1][MAX_STRING_LENGTH];
+
+      float *lat = xlat->val;
+      float *longi = xlong->val; 
+
+      for(int z=0; z<NZ; z++) {
+        memset(file[0], 0, sizeof(file[0]));
+        strncpy(file[0], path, MAX_STRING_LENGTH);
+        strncat(file[0], "/", strlen("/"));
+        char str[4];
+        convert_to_string(str, z);
+        strncat(file[0], str, strlen(str));
+        strncat(file[0], ".csv", strlen(".csv"));
+        printf("%s\n", file[0]);
+
+        FILE *f1 = fopen(file[0], "w");
+        fprintf(f1, "longitude,latitude,%s\n", maps[REL_VERT_VORT].out_name);
+
+        for(int j=0; j<NY; j++) {
+          int jp1 = minf(j+1, NY-1);
+          int jm1 = maxf(j-1, 0);
+          for(int i=0; i<NX; i++) {
+            int ip1 = minf(i+1, NX-1);
+            int im1 = maxf(i-1, 0);
+            float dsx = (ip1-im1)*dx;
+            float dsy = (jp1-jm1)*dy;
+            float mm = msft->val[(NX*j)+i] * msft->val[(NX*j)+i];
+            float dudy = 0.5f * (u->val[(z*(NY*NX_STAG))+((jp1*NX_STAG)+i)]/msfu->val[(NX_STAG*jp1)+i]+
+              u->val[(z*(NY*NX_STAG))+((jp1*NX_STAG)+i+1)]/msfu->val[(NX_STAG*jp1)+i+1]-
+              u->val[(z*(NY*NX_STAG))+((jm1*NX_STAG)+i)]/msfu->val[(NX_STAG*jm1)+i]-
+              u->val[(z*(NY*NX_STAG))+((jm1*NX_STAG)+i+1)]/msfu->val[(NX_STAG*jm1)+i+1])/
+              dsy*mm;
+
+            float dvdx =  0.5f * (v->val[(z*(NY_STAG*NX))+((j*NX)+ip1)]/msfv->val[(NX*j)+ip1]+
+            v->val[(z*(NY_STAG*NX))+(((j+1)*NX)+ip1)]/msfv->val[(NX*(j+1))+ip1]-
+            v->val[(z*(NY_STAG*NX))+((j*NX)+im1)]/msfv->val[(NX*j)+im1]-
+            v->val[(z*(NY_STAG*NX))+(((j+1)*NX)+im1)]/msfv->val[(NX*(j+1))+im1])/
+            dsx*mm;
+
+            float rv = (dvdx - dudy)*1.0e5f;
+            fprintf(f1, "%f,%f,%f\n", longi[(NX*j)+i], lat[(NX*j)+i], rv);
+          }
+        }
+        fclose(f1);
+      }
+      deallocate_tensor(msfu);
+      deallocate_tensor(msfv);
+      deallocate_tensor(msft);
     }
 
     double i_start = cpu_second();
@@ -2773,10 +2778,6 @@ int process(char files[][MAX_STRING_LENGTH], uint num_files, bool no_interpol_ou
     if (cor_param != NULL)     deallocate_tensor(cor_param);
     if (abs_vert_vort != NULL) deallocate_tensor(abs_vert_vort);
     if (rel_vert_vort != NULL) deallocate_tensor(rel_vert_vort);
-
-    if (domain_tags != NULL) {
-      free(domain_tags);
-    }
 
     if (grid_type == STRUCTURED) {
       free(h_velo_u_grid->val);
@@ -2933,9 +2934,6 @@ int process(char files[][MAX_STRING_LENGTH], uint num_files, bool no_interpol_ou
         cudaFree(v[0]);
       }
       cudaFree(d_abs_vert_vort);
-
-      free(maps[ABS_VERT_VORT].buffer1);
-      free(maps[ABS_VERT_VORT].buffer2);
 #endif
     }
 
@@ -2955,9 +2953,6 @@ int process(char files[][MAX_STRING_LENGTH], uint num_files, bool no_interpol_ou
         cudaFree(v[0]);
       }
       cudaFree(d_rel_vert_vort);
-
-      free(maps[REL_VERT_VORT].buffer1);
-      free(maps[REL_VERT_VORT].buffer2);
 #endif
     }
 // --------------------------------------------------------------------------------------------------

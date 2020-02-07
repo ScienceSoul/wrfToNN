@@ -2,10 +2,10 @@
 #define params_h
 
 // The working directory
-#define WORKDIR "/home/seddik/Documents/workdir/WRF_Jebi"
+#define WORKDIR "/media/seddik/ST01/wrf_run"
 
 // The date of the files we are processing
-#define DATE "2018"
+#define DATE "2019"
 
 // Define tne name of the grid spacing attributes
 #define DX_NAME "DX"

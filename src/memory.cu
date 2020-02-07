@@ -57,8 +57,6 @@ map *allocate_maps(int num_variables) {
     m[i].lat = NULL;
     m[i].mass_longi = NULL;
     m[i].mass_lat = NULL;
-    m[i].buffer1 = NULL;
-    m[i].buffer2 = NULL;
     m[i].active = false;
     m[i].used = false;
   }
@@ -175,4 +173,12 @@ void deallocate_4d(float ****t, uint dim1, uint dim2, uint dim3) {
   }
 
   free(t);
+}
+
+int minf(int x, int y) {
+  return (x < y) ? x : y;
+}
+
+int maxf(int x, int y) {
+  return (x > y) ? x : y;
 }
