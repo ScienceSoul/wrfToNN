@@ -2,10 +2,13 @@
 #define params_h
 
 // The working directory
-#define WORKDIR "/media/seddik/ST01/wrf_run"
+#define WORKDIR "/home/seddik/Documents/workdir/weather_control/ncep_gfs/simul"
 
 // The date of the files we are processing
-#define DATE "2019"
+#define DATE "2020"
+
+// The domain identifier used in the WRF outputs
+#define DOMAIN "d01"
 
 // Define tne name of the grid spacing attributes
 #define DX_NAME "DX"
@@ -109,7 +112,8 @@ typedef enum variables_code {
     SH2O,          // Soil liquid water
     SMCREL,        // Relative soil moisture
     SMOIS,         // Soil moisture
-    T,             // Perturbation potential temperature (theta-t0)
+    PERT_T,        // Perturbation potential temperature (theta-t0)
+    TEMP,          // Temperature (computed from the perturbation potential temperature)
     TSLB,          // Soil temperature
     U,             // x-wind component
     V,             // y-wind component
@@ -124,7 +128,7 @@ typedef enum variables_code {
     REL_VERT_VORT  // Relative vertical vorticity dv/dx - du/dy
 } variables_code;
 
-#define DEF_NUM_VARIABLES 44;
+#define DEF_NUM_VARIABLES 45;
 
 const char *active_flags[] = {"ZNU:1",
                               "ZNW:1",
@@ -159,16 +163,17 @@ const char *active_flags[] = {"ZNU:1",
                               "SMCREL:0",
                               "SMOIS:0",
                               "T:1",
+                              "TEMP:1",
                               "TSLB:0",
                               "U:1",
                               "V:1",
                               "W:1",
                               "PRESSURE:1",
-                              "COR_EAST:1",
-                              "COR_NORTH:1",
-                              "GEOPOTENTIAL:1",
-                              "COR_PARAM:1",
-                              "ABS_VERT_VORT:1",
-                              "REL_VERT_VORT:1"};
+                              "COR_EAST:0",
+                              "COR_NORTH:0",
+                              "GEOPOTENTIAL:0",
+                              "COR_PARAM:0",
+                              "ABS_VERT_VORT:0",
+                              "REL_VERT_VORT:0"};
 
 #endif

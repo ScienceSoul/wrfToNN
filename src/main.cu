@@ -66,6 +66,7 @@ tensor *qrain         = NULL;
 tensor *qsnow         = NULL;
 tensor *qvapor        = NULL;
 tensor *t             = NULL;
+tensor *temp          = NULL;
 tensor *ph            = NULL;
 tensor *phb           = NULL;
 tensor *w             = NULL;
@@ -142,10 +143,12 @@ float d_long;
 
 // ---------------------------------------------------
 // Some globals
-// ---------------------------------------------------
+// --------------------------------------------------------------------------------------
 const float earth_radius = 6371.0f;
 const float earth_angular_velocity = 7.2921e-5; // rad/s
-// ---------------------------------------------------
+const float T_base = 300.0f; // Base temperature used to compute the 
+                             // temperature from the perturbation potential temperature
+// --------------------------------------------------------------------------------------
 
 void set_maps(map *maps, bool initial) {
 
@@ -466,12 +469,23 @@ void set_maps(map *maps, bool initial) {
           maps[i].lat = xlat;
         }
         break;
-      case T:
+      case PERT_T:
         if (initial) {
+          // The perturbation temperature is called T in WRF ouput
           maps[i].name = "T";
           maps[i].out_name = "PERT_T";
         } else {
           maps[i].variable = t;
+          maps[i].longi = xlong;
+          maps[i].lat = xlat;
+        }
+        break;
+      case TEMP:
+        if (initial) {
+          maps[i].name = "TEMP";
+          maps[i].out_name = "TEMP";  
+        } else {
+          maps[i].variable = temp;
           maps[i].longi = xlong;
           maps[i].lat = xlat;
         }
@@ -738,9 +752,9 @@ int load_variable(int ncid, const char *var_name, tensor * t, bool active, bool 
   int varid;
 
   // The special case of the full pressure, coriolis east and coriolus north,
-  // the full dry mass, the geopotential, coriolis parameter and absolute
-  // vertival vorticity
-  // Will be computed later after first loading the needed variable to do so
+  // the full dry mass, the geopotential, coriolis parameter, absolute
+  // vertival vorticity and temerature will be computed later after first 
+  // loading the needed variable to do so
   if (strcmp(var_name, "PRESSURE") == 0) {
     return retval;
   }
@@ -763,6 +777,9 @@ int load_variable(int ncid, const char *var_name, tensor * t, bool active, bool 
     return retval;
   }
   if (strcmp(var_name, "REL_VERT_VORT") == 0) {
+    return retval;
+  }
+  if (strcmp(var_name, "TEMP") == 0) {
     return retval;
   }
   if (!active && !used) {
@@ -2127,7 +2144,7 @@ int process(char files[][MAX_STRING_LENGTH], uint num_files, bool no_interpol_ou
     uint rank;
 
     // -------------------------------------------------------------------------
-    // Tensors allocation, znu, znw, the latitude and longitude (on both grids),
+    // Tensor allocations, znu, znw, the latitude and longitude (on both grids),
     // and the velocities are always allocated
     // -------------------------------------------------------------------------
 
@@ -2177,13 +2194,18 @@ int process(char files[][MAX_STRING_LENGTH], uint num_files, bool no_interpol_ou
     rank = 4;
     if (maps[CLDFRA].active)   cldfra   = allocate_tensor(shape, rank, NULL);
 
-    if (maps[P].active || maps[PRESSURE].active) {
+    if (maps[P].active || maps[PRESSURE].active || maps[TEMP].active) {
       p = allocate_tensor(shape, rank, NULL);
       if (!maps[P].active) maps[P].used = true;
     }
-    if (maps[PB].active || maps[PRESSURE].active) {
+    if (maps[PB].active || maps[PRESSURE].active || maps[TEMP].active) {
       pb = allocate_tensor(shape, rank, NULL);
       if (!maps[PB].active) maps[PB].used = true;
+    }
+
+    if (maps[PERT_T].active || maps[TEMP].active) {                      
+      t = allocate_tensor(shape, rank, NULL);
+      if (!maps[PERT_T].active) maps[PERT_T].used = true;
     }
 
     bool partial = true;
@@ -2198,7 +2220,7 @@ int process(char files[][MAX_STRING_LENGTH], uint num_files, bool no_interpol_ou
     if (maps[QRAIN].active)                       qrain         = allocate_tensor(shape, rank, NULL);
     if (maps[QSNOW].active)                       qsnow         = allocate_tensor(shape, rank, NULL);
     if (maps[QVAPOR].active)                      qvapor        = allocate_tensor(shape, rank, NULL);
-    if (maps[T].active)                           t             = allocate_tensor(shape, rank, NULL);
+    if (maps[TEMP].active)                        temp          = allocate_tensor(shape, rank, NULL);
     if (maps[PRESSURE].active)                    pressure      = allocate_tensor(shape, rank, NULL);
     if (maps[COR_EAST].active)                    cor_east      = allocate_tensor(shape, rank, NULL);
     if (maps[COR_NORTH].active)                   cor_north     = allocate_tensor(shape, rank, NULL);
@@ -2293,6 +2315,41 @@ int process(char files[][MAX_STRING_LENGTH], uint num_files, bool no_interpol_ou
       }
     }
 
+    // If required, compute the atmopsheric temperature
+    // from the full potential temperature and full pressure
+    if (maps[TEMP].active) {
+      float *p = maps[P].variable->val;
+      float *pb = maps[PB].variable->val;
+      float *t = maps[PERT_T].variable->val;
+      float *temp = maps[TEMP].variable->val;
+
+      uint nx = 0;
+      uint ny = 0;
+
+      get_horizontal_dims(TEMP, &nx, &ny);
+
+      int num_layers = maps[TEMP].variable->shape[1];
+
+      //  1000 mili-bar = 1 bar = 100000 Pascal
+      double P1000MB = 100000.0f;
+      double RD = 287.0f;
+      double CP = 7.0f*RD/2.0f;
+      
+      for (int z = 0; z < num_layers; z++) {
+        for (int y = 0; y < ny; y++) {
+          for (int x = 0; x < nx; x++) {
+            // The full potential temperature = perturbation + reference temperature
+            float theta = t[(z*(ny*nx))+((y*nx)+x)] + T_base;
+            
+            // The full pressure = perturbation + base state pressure
+            float pressure = p[(z*(ny*nx))+((y*nx)+x)] + pb[(z*(ny*nx))+((y*nx)+x)];
+
+            temp[(z*(ny*nx))+((y*nx)+x)] = theta * powf((pressure/P1000MB), (RD/CP));
+          }
+        }
+      }
+    }
+
     if (grid_type == STRUCTURED) {
       // The storage for the neighbors in the x-wind and y-wind grids
       h_velo_u_grid = (velo_grid *)malloc(sizeof(velo_grid));
@@ -2316,7 +2373,7 @@ int process(char files[][MAX_STRING_LENGTH], uint num_files, bool no_interpol_ou
 
 #ifdef __NVCC__
 
-    // The x-wind component memory allocs
+    // The x-wind component memory allocations
     if (grid_type == UNSTRUCTURED) {
       h_velo_u_grid = (velo_grid *)malloc(sizeof(velo_grid));
       h_velo_u_grid->x = (float *)malloc((NY*NX_STAG)*sizeof(float));
@@ -2367,7 +2424,7 @@ int process(char files[][MAX_STRING_LENGTH], uint num_files, bool no_interpol_ou
       }
     }
 
-    // The y-wind component memory allocs
+    // The y-wind component memory allocations
     if (grid_type == UNSTRUCTURED) {
       h_velo_v_grid = (velo_grid *)malloc(sizeof(velo_grid));
       h_velo_v_grid->x = (float *)malloc((NY_STAG*NX)*sizeof(float));
@@ -2418,7 +2475,7 @@ int process(char files[][MAX_STRING_LENGTH], uint num_files, bool no_interpol_ou
       }
     }
 
-    // The z-wind component memory allocs
+    // The z-wind component memory allocations
     if (grid_type == UNSTRUCTURED) {
       fprintf(stdout, "Currently interpolation in a three dimensional unstructured grid is not fully implemented.\n");
    } else {
@@ -2446,7 +2503,7 @@ int process(char files[][MAX_STRING_LENGTH], uint num_files, bool no_interpol_ou
       }
     }
 
-    // The base geopotential component memory allocs
+    // The base geopotential component memory allocations
     if (grid_type == UNSTRUCTURED) {
       fprintf(stdout, "Currently interpolation in a three dimensional unstructured grid is not fully implemented.\n");
     } else {
@@ -2474,7 +2531,7 @@ int process(char files[][MAX_STRING_LENGTH], uint num_files, bool no_interpol_ou
       }
     }
 
-    // The perturbation geopotential component memory allocs
+    // The perturbation geopotential component memory allocations
     if (grid_type == UNSTRUCTURED) {
       fprintf(stdout, "Currently interpolation in a three dimensional unstructured grid is not fully implemented.\n");
     } else {
@@ -2646,79 +2703,79 @@ int process(char files[][MAX_STRING_LENGTH], uint num_files, bool no_interpol_ou
 #endif
     }
 
-    {
-      int retval;
-      int varid;
+    // {
+    //   int retval;
+    //   int varid;
 
-      rank = 3;
-      shape[0] = NT; shape[1] = NY; shape[2] = NX_STAG;
-      tensor *msfu = allocate_tensor(shape, rank, NULL);
+    //   rank = 3;
+    //   shape[0] = NT; shape[1] = NY; shape[2] = NX_STAG;
+    //   tensor *msfu = allocate_tensor(shape, rank, NULL);
 
-      shape[0] = NT; shape[1] = NY_STAG; shape[2] = NX;
-      tensor *msfv = allocate_tensor(shape, rank, NULL);
+    //   shape[0] = NT; shape[1] = NY_STAG; shape[2] = NX;
+    //   tensor *msfv = allocate_tensor(shape, rank, NULL);
       
-      shape[0] = NT; shape[1] = NY; shape[2] = NX;
-      tensor *msft = allocate_tensor(shape, rank, NULL);
+    //   shape[0] = NT; shape[1] = NY; shape[2] = NX;
+    //   tensor *msft = allocate_tensor(shape, rank, NULL);
 
-      retval = nc_inq_varid(ncid, "MAPFAC_U", &varid);
-      retval = nc_get_var_float(ncid, varid, msfu->val);
+    //   retval = nc_inq_varid(ncid, "MAPFAC_U", &varid);
+    //   retval = nc_get_var_float(ncid, varid, msfu->val);
 
-      retval = nc_inq_varid(ncid, "MAPFAC_V", &varid);
-      retval = nc_get_var_float(ncid, varid, msfv->val);
+    //   retval = nc_inq_varid(ncid, "MAPFAC_V", &varid);
+    //   retval = nc_get_var_float(ncid, varid, msfv->val);
 
-      retval = nc_inq_varid(ncid, "MAPFAC_M", &varid);
-      retval = nc_get_var_float(ncid, varid, msft->val);
+    //   retval = nc_inq_varid(ncid, "MAPFAC_M", &varid);
+    //   retval = nc_get_var_float(ncid, varid, msft->val);
 
-      char *path = "/media/seddik/ST01/wrf_run/test";
-      char file[1][MAX_STRING_LENGTH];
+    //   char *path = "/media/seddik/ST01/wrf_run/test";
+    //   char file[1][MAX_STRING_LENGTH];
 
-      float *lat = xlat->val;
-      float *longi = xlong->val; 
+    //   float *lat = xlat->val;
+    //   float *longi = xlong->val; 
 
-      for(int z=0; z<NZ; z++) {
-        memset(file[0], 0, sizeof(file[0]));
-        strncpy(file[0], path, MAX_STRING_LENGTH);
-        strncat(file[0], "/", strlen("/"));
-        char str[4];
-        convert_to_string(str, z);
-        strncat(file[0], str, strlen(str));
-        strncat(file[0], ".csv", strlen(".csv"));
-        printf("%s\n", file[0]);
+    //   for(int z=0; z<NZ; z++) {
+    //     memset(file[0], 0, sizeof(file[0]));
+    //     strncpy(file[0], path, MAX_STRING_LENGTH);
+    //     strncat(file[0], "/", strlen("/"));
+    //     char str[4];
+    //     convert_to_string(str, z);
+    //     strncat(file[0], str, strlen(str));
+    //     strncat(file[0], ".csv", strlen(".csv"));
+    //     printf("%s\n", file[0]);
 
-        FILE *f1 = fopen(file[0], "w");
-        fprintf(f1, "longitude,latitude,%s\n", maps[REL_VERT_VORT].out_name);
+    //     FILE *f1 = fopen(file[0], "w");
+    //     fprintf(f1, "longitude,latitude,%s\n", maps[REL_VERT_VORT].out_name);
 
-        for(int j=0; j<NY; j++) {
-          int jp1 = minf(j+1, NY-1);
-          int jm1 = maxf(j-1, 0);
-          for(int i=0; i<NX; i++) {
-            int ip1 = minf(i+1, NX-1);
-            int im1 = maxf(i-1, 0);
-            float dsx = (ip1-im1)*dx;
-            float dsy = (jp1-jm1)*dy;
-            float mm = msft->val[(NX*j)+i] * msft->val[(NX*j)+i];
-            float dudy = 0.5f * (u->val[(z*(NY*NX_STAG))+((jp1*NX_STAG)+i)]/msfu->val[(NX_STAG*jp1)+i]+
-              u->val[(z*(NY*NX_STAG))+((jp1*NX_STAG)+i+1)]/msfu->val[(NX_STAG*jp1)+i+1]-
-              u->val[(z*(NY*NX_STAG))+((jm1*NX_STAG)+i)]/msfu->val[(NX_STAG*jm1)+i]-
-              u->val[(z*(NY*NX_STAG))+((jm1*NX_STAG)+i+1)]/msfu->val[(NX_STAG*jm1)+i+1])/
-              dsy*mm;
+    //     for(int j=0; j<NY; j++) {
+    //       int jp1 = minf(j+1, NY-1);
+    //       int jm1 = maxf(j-1, 0);
+    //       for(int i=0; i<NX; i++) {
+    //         int ip1 = minf(i+1, NX-1);
+    //         int im1 = maxf(i-1, 0);
+    //         float dsx = (ip1-im1)*dx;
+    //         float dsy = (jp1-jm1)*dy;
+    //         float mm = msft->val[(NX*j)+i] * msft->val[(NX*j)+i];
+    //         float dudy = 0.5f * (u->val[(z*(NY*NX_STAG))+((jp1*NX_STAG)+i)]/msfu->val[(NX_STAG*jp1)+i]+
+    //           u->val[(z*(NY*NX_STAG))+((jp1*NX_STAG)+i+1)]/msfu->val[(NX_STAG*jp1)+i+1]-
+    //           u->val[(z*(NY*NX_STAG))+((jm1*NX_STAG)+i)]/msfu->val[(NX_STAG*jm1)+i]-
+    //           u->val[(z*(NY*NX_STAG))+((jm1*NX_STAG)+i+1)]/msfu->val[(NX_STAG*jm1)+i+1])/
+    //           dsy*mm;
 
-            float dvdx =  0.5f * (v->val[(z*(NY_STAG*NX))+((j*NX)+ip1)]/msfv->val[(NX*j)+ip1]+
-            v->val[(z*(NY_STAG*NX))+(((j+1)*NX)+ip1)]/msfv->val[(NX*(j+1))+ip1]-
-            v->val[(z*(NY_STAG*NX))+((j*NX)+im1)]/msfv->val[(NX*j)+im1]-
-            v->val[(z*(NY_STAG*NX))+(((j+1)*NX)+im1)]/msfv->val[(NX*(j+1))+im1])/
-            dsx*mm;
+    //         float dvdx =  0.5f * (v->val[(z*(NY_STAG*NX))+((j*NX)+ip1)]/msfv->val[(NX*j)+ip1]+
+    //         v->val[(z*(NY_STAG*NX))+(((j+1)*NX)+ip1)]/msfv->val[(NX*(j+1))+ip1]-
+    //         v->val[(z*(NY_STAG*NX))+((j*NX)+im1)]/msfv->val[(NX*j)+im1]-
+    //         v->val[(z*(NY_STAG*NX))+(((j+1)*NX)+im1)]/msfv->val[(NX*(j+1))+im1])/
+    //         dsx*mm;
 
-            float rv = (dvdx - dudy)*1.0e5f;
-            fprintf(f1, "%f,%f,%f\n", longi[(NX*j)+i], lat[(NX*j)+i], rv);
-          }
-        }
-        fclose(f1);
-      }
-      deallocate_tensor(msfu);
-      deallocate_tensor(msfv);
-      deallocate_tensor(msft);
-    }
+    //         float rv = (dvdx - dudy)*1.0e5f;
+    //         fprintf(f1, "%f,%f,%f\n", longi[(NX*j)+i], lat[(NX*j)+i], rv);
+    //       }
+    //     }
+    //     fclose(f1);
+    //   }
+    //   deallocate_tensor(msfu);
+    //   deallocate_tensor(msfv);
+    //   deallocate_tensor(msft);
+    // }
 
     double i_start = cpu_second();
     for (int i = 0; i < NUM_VARIABLES; i++) {
@@ -2765,6 +2822,7 @@ int process(char files[][MAX_STRING_LENGTH], uint num_files, bool no_interpol_ou
     if (smcrel != NULL)    deallocate_tensor(smcrel);
     if (smois != NULL)     deallocate_tensor(smois);
     if (t != NULL)         deallocate_tensor(t);
+    if (temp != NULL)      deallocate_tensor(temp);
     if (tslb != NULL)      deallocate_tensor(tslb);
 
     deallocate_tensor(u);
@@ -2962,6 +3020,9 @@ int process(char files[][MAX_STRING_LENGTH], uint num_files, bool no_interpol_ou
   return 0;
 }
 
+// ==============================================================================
+// ==================================== MAIN ====================================
+// ==============================================================================
 int main (int argc, const char *argv[]) {
 
   fprintf(stdout, "Program starting....\n");
@@ -3007,8 +3068,16 @@ int main (int argc, const char *argv[]) {
   if (buffer[strlen(buffer)-1] != '/') {
     strncat(buffer, "/", strlen("/"));
   }
+
+  // The WRF output prefix
+  char wrf_prefix[MAX_STRING_LENGTH];
+  strncpy(wrf_prefix, "wrfout_", MAX_STRING_LENGTH);
+  // Add to it the domain identifier
+  strncat(wrf_prefix, DOMAIN, strlen(DOMAIN));
+  strncat(wrf_prefix, "_", strlen("_"));
+
   for (int i = 0; i < num_files; i++) {
-    if (strstr(dir_files[i], "wrfout_") != NULL) {
+    if (strstr(dir_files[i], wrf_prefix) != NULL) {
       strncpy(netcdf_files[num_netcdf_files], buffer, strlen(buffer));
       strncat(netcdf_files[num_netcdf_files], dir_files[i], strlen(dir_files[i]));
       num_netcdf_files++;
